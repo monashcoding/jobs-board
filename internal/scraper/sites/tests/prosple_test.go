@@ -11,10 +11,18 @@ import (
 // TestHelloName calls greetings.Hello with a name, checking
 // for a valid return value.
 func TestHelloName(t *testing.T) {
-		fmt.Println("Starting")
-
 		prosple := sites.NewProspleScraper()
-		prosple.Scrape(context.Background())
+		jobListing, err := prosple.Scrape(context.Background())
 
-		fmt.Println("Test Ends")
+		// Assert no error
+		if err != nil {
+			t.Fatalf("Error: %v", err)
+			
+			// Assert jobListing is not nil
+			if jobListing == nil {
+				t.Fatalf("Expected jobListing to be of type []models.Listing, but got nil")
+			}
+		}
+		
+		fmt.Printf("Job listings: %v\n", jobListing)
 }
