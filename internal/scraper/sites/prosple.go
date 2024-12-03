@@ -2,6 +2,8 @@ package sites
 
 import (
 	"context"
+	"fmt"
+
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
@@ -26,5 +28,6 @@ func (s *ProspleScraper) URL() string {
 }
 
 func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	fmt.Println("Scraping Prosple")
 	return nil, nil
 }
