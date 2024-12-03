@@ -7,89 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
 )
-
-type GraphQLRequest struct {
-	Query     string                 `json:"query"`
-	Variables map[string]interface{} `json:"variables,omitempty"`
-}
-type GraphQLResponse struct {
-	Data struct {
-		OpportunitiesSearch struct {
-			ResultCount   int           `json:"resultCount"`
-			Opportunities []Opportunity `json:"opportunities"`
-		} `json:"opportunitiesSearch"`
-	} `json:"data"`
-	Errors []GraphQLError `json:"errors,omitempty"`
-}
-
-type Opportunity struct {
-	ID                    string `json:"id"`
-	Title                 string `json:"title"`
-	ApplyByUrl            string `json:"applyByUrl"`
-	DetailPageURl         string `json:"detailPageUrl"`
-	ApplicationsCloseDate string `json:"applicationsCloseDate"`
-	LocationDescription   string `json:"locationDescription"`
-
-	Overview struct {
-		Summary  string `json:"summary"`
-		FullText string `json:"fullText"`
-	} `json:"overview"`
-
-	ParentEmployer struct {
-		Title string `json:"title"`
-	} `json:"parentEmployer"`
-
-	OpportunityTypes []struct {
-		ID    string `json:"id"`
-		Label string `json:"label"`
-	} `json:"opportunityTypes"`
-
-	PhysicalLocations []struct {
-		Id    string `json:"id"`
-		Label string `json:"label"`
-
-		Children []struct {
-			Id    string `json:"id"`
-			Label string `json:"label"`
-		} `json:"children"`
-	} `json:"physicalLocations"`
-
-	StudyFields []struct {
-		Id    string `json:"id"`
-		Label string `json:"label"`
-
-		Children []struct {
-			Id    string `json:"id"`
-			Label string `json:"label"`
-		} `json:"children"`
-	} `json:"studyFields"`
-
-	StartDate struct {
-		Category struct {
-			Id    string `json:"id"`
-			Label string `json:"label"`
-		} `json:"category"`
-	} `json:"startDate"`
-
-	WorkingRights []struct {
-		Id    string `json:"id"`
-		Label string `json:"label"`
-
-		Children []struct {
-			Id    string `json:"id"`
-			Label string `json:"label"`
-		} `json:"children"`
-	} `json:"workingRights"`
-}
-
-type GraphQLError struct {
-	Message string `json:"message"`
-}
 
 type ProspleScraper struct {
 	*scraper.BaseScraper
@@ -110,31 +33,78 @@ func (s *ProspleScraper) URL() string {
 }
 
 func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
-	fmt.Println("Scraping Prosple")
 
+	// Set up the GraphQL query
 	prospleApiUrl := "https://prosple-gw.global.ssl.fastly.net/internal"
 	query := s.GetGraphQlQuery()
 	variables := s.GetGraphQlVariables()
 
-	response, err := s.SendGraphQLQuery(prospleApiUrl, query, variables, "OpportunitiesSearch")
-
+	// Send the GraphQL query
+	response, err := s.SendGraphQLQuery(prospleApiUrl, query, variables)
 	if err != nil {
 		return nil, fmt.Errorf("GraphQL query failed: %v", err)
 	}
 
-	fmt.Printf("Found %d opportunities\n", response.Data.OpportunitiesSearch.ResultCount)
+	// Convert GraphQL response to models.Listing
+	modelsListings := []models.Listing{}
 
 	for _, opp := range response.Data.OpportunitiesSearch.Opportunities {
-		fmt.Printf("- Opportunity Summary: %.20s\n", opp.Overview.FullText)
+		model, err := s.OpportunityToModel(opp)
+		if err != nil {
+			fmt.Printf("Error converting opportunity to model: %v\n", err)
+		} else {
+			modelsListings = append(modelsListings, *model)
+			fmt.Println("Model: ", model.CloseDate)
+		}
 	}
 
-	return nil, nil
+	return modelsListings, nil
 }
 
-func (s *ProspleScraper) SendGraphQLQuery(url string, query string, variables map[string]interface{}, operationName string) (*GraphQLResponse, error) {
+func (s *ProspleScraper) OpportunityToModel(opportunity models.Opportunity) (*models.Listing, error) {
+	sourceUrl := s.URL() + opportunity.DetailPageURl // Need to add base url to relative path
+
+	company := models.Company{
+		Name:    opportunity.ParentEmployer.Title,
+		Website: s.URL() + opportunity.ParentEmployer.DetailPageUrl,
+	}
+
+	jobType := models.JobType(opportunity.OpportunityTypes[0].Label)
+
+	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing close date: %v", err)
+	}
+
+	locations := []models.LocationType{} // TODO: Convert physicalLocations to LocationType
+
+	studyfield := []models.StudyField{} // TODO: Convert studyFields to StudyField
+
+	parsedStartDate := parsedCloseDate // TODO:: Convert use StartDate Struct
+
+	workingRights := []models.WorkingRight{} // TODO: Convert workingRights to WorkingRight
+
+	return &models.Listing{
+		Title:          opportunity.Title,
+		Description:    opportunity.Overview.FullText,
+		Company:        company,
+		ApplicationURL: opportunity.ApplyByUrl,
+		SourceURLs:     []string{sourceUrl},
+		Type:           jobType,
+		CloseDate:      &parsedCloseDate,
+		Locations:      locations,
+		StudyFields:    studyfield,
+		StartDate:      parsedStartDate,
+		WorkingRights:  workingRights,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}, nil
+}
+
+func (s *ProspleScraper) SendGraphQLQuery(url string, query string, variables map[string]interface{}) (*models.GraphQLResponse, error) {
 
 	// Prepare the request body
-	requestBody := GraphQLRequest{
+	requestBody := models.GraphQLRequest{
 		Query:     query,
 		Variables: variables,
 	}
@@ -174,7 +144,7 @@ func (s *ProspleScraper) SendGraphQLQuery(url string, query string, variables ma
 	}
 
 	// Parse the response
-	var graphqlResp GraphQLResponse
+	var graphqlResp models.GraphQLResponse
 	if err := json.Unmarshal(body, &graphqlResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
 	}
