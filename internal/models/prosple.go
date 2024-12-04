@@ -58,7 +58,7 @@ type Opportunity struct {
 	} `json:"studyFields"`
 
 	StartDate struct {
-		Category struct {
+		Category *struct {
 			Id    string `json:"id"`
 			Label string `json:"label"`
 		} `json:"category"`

@@ -2,6 +2,8 @@ package sites
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites"
@@ -13,15 +15,15 @@ func TestHelloName(t *testing.T) {
 	prosple := sites.NewProspleScraper()
 	jobListing, err := prosple.Scrape(context.Background())
 
-	// Assert no error
+	// Write to a json file
+	file, err := os.Create("prosple.json")
 	if err != nil {
-		t.Fatalf("Error: %v", err)
-
-		// Assert jobListing is not nil
-		if jobListing == nil {
-			t.Fatalf("Expected jobListing to be of type []models.Listing, but got nil")
-		}
+		t.Fatalf("Failed to create file: %v", err)
 	}
+	defer file.Close()
 
-	// fmt.Printf("Job listings: %v\n", jobListing)
+	encoder := json.NewEncoder(file)
+	if err := encoder.Encode(jobListing[0]); err != nil {
+		t.Fatalf("Failed to encode job listing to JSON: %v", err)
+	}
 }

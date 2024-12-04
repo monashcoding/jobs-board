@@ -29,7 +29,7 @@ func (s *ProspleScraper) Name() string {
 }
 
 func (s *ProspleScraper) URL() string {
-	return "https://au.prosple.com/"
+	return "https://au.prosple.com"
 }
 
 func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
@@ -46,20 +46,21 @@ func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	}
 
 	// Convert GraphQL response to models.Listing
-	modelsListings := []models.Listing{}
+	modelListings := []models.Listing{}
 
 	for _, opp := range response.Data.OpportunitiesSearch.Opportunities {
 		model, err := s.OpportunityToModel(opp)
 		if err != nil {
 			fmt.Printf("Error converting opportunity to model: %v\n", err)
 		} else {
-			modelsListings = append(modelsListings, *model)
-			fmt.Println("Model: ", model.CloseDate)
+			modelListings = append(modelListings, *model)
 		}
 	}
 
-	return modelsListings, nil
+	return modelListings, nil
 }
+
+// Prosple Specific Functions
 
 func (s *ProspleScraper) OpportunityToModel(opportunity models.Opportunity) (*models.Listing, error) {
 	sourceUrl := s.URL() + opportunity.DetailPageURl // Need to add base url to relative path
@@ -76,13 +77,30 @@ func (s *ProspleScraper) OpportunityToModel(opportunity models.Opportunity) (*mo
 		return nil, fmt.Errorf("error parsing close date: %v", err)
 	}
 
-	locations := []models.LocationType{} // TODO: Convert physicalLocations to LocationType
+	locations, err := s.ProspleLocationsToLocationTypes(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting locations: %v", err)
+	}
 
-	studyfield := []models.StudyField{} // TODO: Convert studyFields to StudyField
+	studyfield, err := s.ProspleStudyFieldsToStudyFields(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting study fields: %v", err)
+	}
 
-	parsedStartDate := parsedCloseDate // TODO:: Convert use StartDate Struct
+	var parsedStartDate time.Time
+	if opportunity.StartDate.Category != nil {
+		parsedStartDate, err = time.Parse("2006-01-02T15:04:05.000Z", opportunity.StartDate.Category.Label)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing start date: %v", err)
+		}
+	} else {
+		parsedStartDate = time.Now()
+	}
 
-	workingRights := []models.WorkingRight{} // TODO: Convert workingRights to WorkingRight
+	workingRights, err := s.ProspleWorkingRightsToWorkingRights(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting working rights: %v", err)
+	}
 
 	return &models.Listing{
 		Title:          opportunity.Title,
@@ -100,6 +118,53 @@ func (s *ProspleScraper) OpportunityToModel(opportunity models.Opportunity) (*mo
 		UpdatedAt:      time.Now(),
 	}, nil
 }
+
+// ----------------- Conversion Functions -----------------
+
+// TODO:: Implement Error Handling
+func (s *ProspleScraper) ProspleLocationsToLocationTypes(opportunity models.Opportunity) ([]models.LocationType, error) {
+	locations := []models.LocationType{}
+	for _, location := range opportunity.PhysicalLocations {
+		locations = append(locations, models.LocationType(location.Label))
+
+		for _, childLocation := range location.Children {
+			locations = append(locations, models.LocationType(childLocation.Label))
+		}
+	}
+
+	return locations, nil
+}
+
+// TODO:: Implement Error Handling
+func (s *ProspleScraper) ProspleStudyFieldsToStudyFields(opportunity models.Opportunity) ([]models.StudyField, error) {
+	studyFields := []models.StudyField{}
+	for _, field := range opportunity.StudyFields {
+		studyFields = append(studyFields, models.StudyField(field.Label)) // Find a way to standardize the study fields names
+
+		// [!!!] Skipping children labels, Prosple has a really high amount of children labels
+		// for _, child := range field.Children {
+		// 	studyFields = append(studyFields, models.StudyField(child.Label)) // Find a way to standardize the study fields names
+		// }
+	}
+
+	return studyFields, nil
+}
+
+// TODO:: Implement Work Rights
+func (s *ProspleScraper) ProspleWorkingRightsToWorkingRights(opportunity models.Opportunity) ([]models.WorkingRight, error) {
+	workingRights := []models.WorkingRight{}
+	for _, workingRight := range opportunity.WorkingRights {
+		workingRights = append(workingRights, models.WorkingRight(workingRight.Label))
+
+		for _, child := range workingRight.Children {
+			workingRights = append(workingRights, models.WorkingRight(child.Label))
+		}
+	}
+
+	return workingRights, nil
+}
+
+// ----------------- GraphQL Functions -----------------
 
 func (s *ProspleScraper) SendGraphQLQuery(url string, query string, variables map[string]interface{}) (*models.GraphQLResponse, error) {
 
@@ -208,9 +273,145 @@ func (s *ProspleScraper) GetGraphQlQuery() string {
         id
         label
       }
-      locationDescription
+
       applicationsOpenDate
       applicationsCloseDate
+      locationDescription
+      applicationsCloseDateDescription
+      timeZone
+      detailPageURL
+      sponsored
+      remoteAvailable
+      minSalary
+      maxSalary
+      additionalBenefits
+      salaryDescription
+      hideSalary
+      minNumberVacancies
+      maxNumberVacancies
+      acceptsPreRegisters
+      externalTalentPool
+      applicationsOpen
+      opportunityTypes{
+        id
+        label
+      }
+      startDate{
+        __typename
+        ... on OpportunityStartDateCategory
+        {
+         category{
+          id
+          label
+         }
+        }
+      }
+      studyFields{
+        id
+        label
+        color
+        children{
+          id
+          label
+        }
+      }
+      physicalLocations{
+        id
+        label
+        children{
+          id
+          label
+        }
+      }
+      remoteWorkLocations{
+        id
+        label
+      }
+      parentEmployer{
+        id
+        title
+        advertiserName
+        overallSatisfactionRating
+        overallSatisfactionsReviewsCount
+        detailPageURL
+        logo{
+          altText
+          thumbnail{
+            url
+            width
+            height
+          }
+        }
+        numEmployees{
+          id
+          label
+        }
+        opportunityTypes{
+          id
+          label
+        }
+        overview{
+          summary
+        }
+        pros
+        cons
+        industrySectors{
+          id
+          label
+        }
+      }
+      salary {
+        type
+        value
+        rate
+        range{
+          minimum
+          maximum
+        }
+        currency{
+          id
+          label
+        }
+
+      }
+              salaryCurrency{
+          id
+          label
+        }
+        flexibleCTAs{
+          id
+          label
+          type
+          style
+          placement
+          category
+          showDate
+          hideDate
+          webform{
+            id
+          }
+          virtualExperience{
+            id
+          }
+          link{
+            url
+          }
+          
+        }
+        workingRights{
+          id
+          label
+          children{
+            id
+            label
+          }
+        }
+        pathways{
+          id
+        }
+        applicationProcess{
+          processType
+        }
       }
     }
   }`
