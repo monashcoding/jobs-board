@@ -39,3 +39,13 @@ func NewBaseScraper() *BaseScraper {
 		collector: c,
 	}
 }
+
+// SetCollector allows replacing the collector for testing
+func (s *BaseScraper) SetCollector(c *colly.Collector) {
+	s.collector = c
+}
+
+// GetCollector returns the current collector
+func (s *BaseScraper) GetCollector() *colly.Collector {
+	return s.collector
+}

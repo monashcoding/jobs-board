@@ -47,6 +47,77 @@ The pipeline processes scraped listings through several steps:
 A pipeline accepts an array of listings, and will return an array of listings.
 The final pipeline `upload.go` will upload / update the listings passed to it.
 
+## Testing
+
+### Scraper Tests
+Each scraper is tested using a shared testing framework.
+
+For each site, we run the scrapers against saved HTML data, ensuring they return the expected `Listing[]` response.
+
+HTML data should be up to date and reflect the actual structure of each site.
+
+```
+internal/
+└── scraper/
+    ├── testing/                        # Shared testing utilities
+    └── sites/
+        ├── testdata/     
+        │   ├── gradcon/                # Gradcon Specific Test Data
+        │   │   ├── success/              # Successful scraping scenarios
+        │   │   │   ├── page.html           # Homepage HTML Response
+        │   │   │   └── expected.json       # Expected parsing results
+        ├── gradcon.go                  # GradConnection scraper
+        ├── gradcon_test.go             # GradConnection scraper tests
+        └── ...
+```
+
+#### Test Structure
+Each scraper's tests follow these conventions:
+1. **Test Data**: HTML fixtures and expected results are stored in `internal/scraper/sites/testdata/<scraper_name>/`
+   ```json
+   // success/expected.json
+   [
+     {
+       "title": "Graduate Software Engineer",
+       "company": {
+         "name": "Example Corp",
+         "website": "https://example.com"
+       },
+       "type": "GRADUATE",
+       "locations": ["VIC"],
+       "study_fields": ["SOFTWARE"]
+     }
+   ]
+   ```
+2. **URL Mapping**: Different scenarios are tested, and each test maps URLs to local HTML fixtures
+    ```go
+     func TestYourScraper_Scrape(t *testing.T) {
+         scraper := NewYourScraper()
+         suite := scrapertesting.NewScraperTestSuite(t, scraper, "testdata/your_scraper")
+    
+         testCases := []scrapertesting.TestCase{
+             {
+                 Name:          "successful_scrape",
+                 FixtureFolder: "success",
+                 ExpectedFile:  "success/expected.json",
+                 FixtureMapping: map[string]string{
+                     "https://example.com/jobs": "success/main_page.html",
+                 },
+             },
+             // Add more test cases...
+         }
+    
+         for _, tc := range testCases {
+             suite.RunTestCase(tc)
+         }
+     }
+    ```
+#### Running Tests
+To test a specific scraper:
+```bash
+go test ./internal/scraper/sites -run TestGradconScraper_Scrape -v
+```
+
 ## Getting Started
 
 1. Set up environment variables:
