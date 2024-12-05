@@ -109,10 +109,76 @@ internal/
         ├── gradcon_test.go             # GradConnection scraper tests
         └── ...
 ```
+
 #### Running Tests
 To test a specific scraper:
 ```bash
 go test ./internal/scraper/sites -run TestGradconScraper_Scrape -v
+```
+
+### Pipeline Tests
+Each pipeline step is tested using a shared testing framework.
+
+We define the input and expected output `Listing[]` in JSON.
+   ```json
+   // scenario1/input.json
+   [
+     {
+       "title": "Example Job",
+       ...
+     }
+   ]
+   
+   // scenario1/output.json
+   [
+     {
+       "title": "Processed Example Job",
+       ...
+     }
+   ]
+   ```
+
+Finally, we run the pipeline step against our test case.
+   ```go
+   func TestYourStep_Process(t *testing.T) {
+       step := NewYourStep()
+       suite := pipelinetesting.NewPipelineStepTestSuite(t, step, "testdata/your_step")
+
+       testCases := []pipelinetesting.TestCase{
+           {
+               Name:       "scenario1",
+               InputFile:  "scenario1/input.json",
+               OutputFile: "scenario1/output.json",
+           },
+           // Add more test cases...
+       }
+
+       for _, tc := range testCases {
+           suite.RunTestCase(tc)
+       }
+   }
+   ```
+
+#### Directory Structure
+```
+internal/
+└── pipeline/
+    ├── testing/                # Shared testing utilities
+    └── steps/
+        ├── testdata/          # Test fixtures
+        │   ├── normalization/
+        │   │   ├── clean/     # Testing with already clean data
+        │   │   │   ├── input.json
+        │   │   │   └── output.json
+        ├── normalization.go
+        ├── normalization_test.go
+        ├── (... repeated for other steps)
+```
+
+#### Running Pipeline Tests
+To test a specific step:
+```bash
+go test ./internal/pipeline/steps -run TestNormalizationStep_Process -v
 ```
 
 ## Getting Started
