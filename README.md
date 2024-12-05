@@ -110,12 +110,6 @@ internal/
         └── ...
 ```
 
-#### Running Tests
-To test a specific scraper:
-```bash
-go test ./internal/scraper/sites -run TestGradconScraper_Scrape -v
-```
-
 ### Pipeline Tests
 Each pipeline step is tested using a shared testing framework.
 
@@ -159,7 +153,7 @@ Finally, we run the pipeline step against our test case.
    }
    ```
 
-#### Directory Structure
+#### Test Structure
 ```
 internal/
 └── pipeline/
@@ -173,12 +167,6 @@ internal/
         ├── normalization.go
         ├── normalization_test.go
         ├── (... repeated for other steps)
-```
-
-#### Running Pipeline Tests
-To test a specific step:
-```bash
-go test ./internal/pipeline/steps -run TestNormalizationStep_Process -v
 ```
 
 ## Getting Started
