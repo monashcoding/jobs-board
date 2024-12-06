@@ -8,12 +8,12 @@ import (
 )
 
 type GradconScraper struct {
-	*scraper.BaseScraper
+	*scraper.CollyScraper
 }
 
 func NewGradconScraper() *GradconScraper {
 	return &GradconScraper{
-		BaseScraper: scraper.NewBaseScraper(),
+		CollyScraper: scraper.NewCollyScraper(),
 	}
 }
 

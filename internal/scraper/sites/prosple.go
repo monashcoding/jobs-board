@@ -14,14 +14,10 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
 )
 
-type ProspleScraper struct {
-	*scraper.BaseScraper
-}
+type ProspleScraper struct{}
 
 func NewProspleScraper() *ProspleScraper {
-	return &ProspleScraper{
-		BaseScraper: scraper.NewBaseScraper(),
-	}
+	return &ProspleScraper{}
 }
 
 func (s *ProspleScraper) Name() string {
