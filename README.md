@@ -47,6 +47,128 @@ The pipeline processes scraped listings through several steps:
 A pipeline accepts an array of listings, and will return an array of listings.
 The final pipeline `upload.go` will upload / update the listings passed to it.
 
+## Testing
+
+### Scraper Tests
+Each scraper is tested using a shared testing framework.
+
+For each site, we first save a copy of the HTML data, and calculate the expected `Listing[]` response from it.
+   ```json
+   // success/expected.json
+   [
+     {
+       "title": "Graduate Software Engineer",
+       "company": {
+         "name": "Example Corp",
+         "website": "https://example.com"
+       },
+       "type": "GRADUATE",
+       "locations": ["VIC"],
+       "study_fields": ["SOFTWARE"]
+     }
+   ]
+   ```
+Then we run the test, simulating HTTP requests to each URL and comparing the expected outputs.
+```go
+func TestYourScraper_Scrape(t *testing.T) {
+scraper := NewYourScraper()
+suite := scrapertesting.NewScraperTestSuite(t, scraper, "testdata/your_scraper")
+
+         testCases := []scrapertesting.TestCase{
+             {
+                 Name:          "successful_scrape",
+                 FixtureFolder: "success",
+                 ExpectedFile:  "success/expected.json",
+                 FixtureMapping: map[string]string{
+                     "https://example.com/jobs": "success/main_page.html",
+                 },
+             },
+             // Add more test cases...
+         }
+    
+         for _, tc := range testCases {
+             suite.RunTestCase(tc)
+         }
+     }
+```
+
+HTML data should be up to date and reflect the actual structure of each site.
+
+#### Test Structure
+```
+internal/
+└── scraper/
+    ├── testing/                        # Shared testing utilities
+    └── sites/
+        ├── testdata/     
+        │   ├── gradcon/                # Gradcon Specific Test Data
+        │   │   ├── success/              # Successful scraping scenarios
+        │   │   │   ├── page.html           # Homepage HTML Response
+        │   │   │   └── expected.json       # Expected parsing results
+        ├── gradcon.go                  # GradConnection scraper
+        ├── gradcon_test.go             # GradConnection scraper tests
+        └── ...
+```
+
+### Pipeline Tests
+Each pipeline step is tested using a shared testing framework.
+
+We define the input and expected output `Listing[]` in JSON.
+   ```json
+   // scenario1/input.json
+   [
+     {
+       "title": "Example Job",
+       ...
+     }
+   ]
+   
+   // scenario1/output.json
+   [
+     {
+       "title": "Processed Example Job",
+       ...
+     }
+   ]
+   ```
+
+Finally, we run the pipeline step against our test case.
+   ```go
+   func TestYourStep_Process(t *testing.T) {
+       step := NewYourStep()
+       suite := pipelinetesting.NewPipelineStepTestSuite(t, step, "testdata/your_step")
+
+       testCases := []pipelinetesting.TestCase{
+           {
+               Name:       "scenario1",
+               InputFile:  "scenario1/input.json",
+               OutputFile: "scenario1/output.json",
+           },
+           // Add more test cases...
+       }
+
+       for _, tc := range testCases {
+           suite.RunTestCase(tc)
+       }
+   }
+   ```
+
+#### Test Structure
+```
+internal/
+└── pipeline/
+    ├── testing/                # Shared testing utilities
+    └── steps/
+        ├── testdata/          # Test fixtures
+        │   ├── normalization/
+        │   │   ├── clean/     # Testing with already clean data
+        │   │   │   ├── input.json
+        │   │   │   └── output.json
+        ├── normalization.go
+        ├── normalization_test.go
+        ├── (... repeated for other steps)
+```
+
 ## Getting Started
 
 1. Set up environment variables:

@@ -1,0 +1,13 @@
+[
+  {
+    "title": "   Software    Engineer   ",
+    "description": "\n\nA description with \t weird spacing\n\n",
+    "company": {
+      "name": " Tech   Corp ",
+      "website": " https://techcorp.com "
+    },
+    "type": "GRADUATE",
+    "locations": ["VIC"],
+    "study_fields": ["SOFTWARE"]
+  }
+]
