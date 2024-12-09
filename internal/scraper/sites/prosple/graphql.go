@@ -113,13 +113,13 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 	return &graphqlResp, nil
 }
 
-func GetGraphQlVariables() map[string]interface{} {
+func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
 	return map[string]interface{}{
 		"parameters": map[string]interface{}{
 			"gid": "6",
 			"range": map[string]interface{}{
-				"offset": 0,
-				"limit":  20,
+				"offset": offset,
+				"limit":  limit,
 			},
 			"sortBy": map[string]interface{}{
 				"criteria":  "POPULARITY",
