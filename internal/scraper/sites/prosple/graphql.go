@@ -122,12 +122,11 @@ func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
 				"limit":  limit,
 			},
 			"sortBy": map[string]interface{}{
-				"criteria":  "POPULARITY",
+				"criteria":  "NEWEST_OPPORTUNITIES", // NEWEST_OPPORTUNITIES, POPULARITY, CLOSING_DATE
 				"direction": "DESC",
 			},
 			"subscriptionTierEpicVariation": "THIRD_VARIATION",
 			"keywords":                      "",
-			"workRightLocation":             "29058",
 			"experiments": map[string]interface{}{
 				"bidKeyword": map[string]interface{}{
 					"enabled": false,
@@ -137,9 +136,21 @@ func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
 			"selectedStartDateRangeFacet": nil,
 			"selectedLocationFacets": []map[string]interface{}{
 				{
-					"id":          "9692",
+					"id":          "9692", // 9692 = Australia
 					"childFacets": []interface{}{},
 				},
+			},
+			"selectedStudyFieldFacets": []map[string]interface{}{
+				{
+					"id": "502", // 502 = IT & Computer Science
+				},
+			},
+			"selectedWorkRightsType": []map[string]interface{}{
+				{ "id": "29059" }, // 29059 = Australian Citizen
+				{ "id": "29060" }, // 29060 = Australian Permanent Resident
+				{ "id": "29061" }, // 29061 = International Student/Graduate Visa
+				{ "id": "29062" }, // 29062 = Australian Work Visa (All Other)
+				{ "id": "29063" }, // 29063 = Visa Sponsorship Included
 			},
 		},
 	}
