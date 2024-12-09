@@ -179,6 +179,5 @@ func GetGraphQlQuery() string {
       }
       }
     }
-  }
-}`
+  }`
 }
