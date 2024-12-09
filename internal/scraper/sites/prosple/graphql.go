@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 type GraphQLRequest struct {
@@ -73,13 +75,17 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 		Variables: variables,
 	}
 
+	utils.Log("Sending GraphQL request [...]")
+
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
+		utils.Log("Failed to marshal request body: %v", err)
 		return nil, fmt.Errorf("failed to marshal request body: %v", err)
 	}
 
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
+		utils.Log("Failed to create request: %v", err)
 		return nil, fmt.Errorf("failed to create request: %v", err)
 	}
 
@@ -101,6 +107,8 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 		return nil, fmt.Errorf("HTTP error: %s, %v", resp.Status, string(body))
 	}
 
+	utils.Log("GraphQL response successfully received [\u2713]")
+
 	var graphqlResp GraphQLResponse
 	if err := json.Unmarshal(body, &graphqlResp); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
@@ -109,6 +117,8 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 	if len(graphqlResp.Errors) > 0 {
 		return nil, fmt.Errorf("GraphQL error: %v", graphqlResp.Errors)
 	}
+
+	utils.Log("Reponse body successfully parsed [\u2713]")
 
 	return &graphqlResp, nil
 }
@@ -192,3 +202,5 @@ func GetGraphQlQuery() string {
     }
   }`
 }
+
+
