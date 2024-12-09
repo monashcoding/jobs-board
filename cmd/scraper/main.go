@@ -1,29 +1,32 @@
-package scraper
+package main
 
 import (
 	"context"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
-	"log"
+	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/monashcoding/mploy-golang-core/internal/database"
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
-	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites"
 )
 
 func main() {
+	utils.Log("Starting MPLOY Scraper.")
+
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Set up MongoDB connection
+	utils.Log("Setting up MongoDB connection.")
 	mongodb, err := database.NewMongoDB(ctx)
 	if err != nil {
-		log.Fatalf("Failed to connect to MongoDB: %v", err)
+		utils.Fatal("Failed to connect to MongoDB: %v", err)
 	}
 	defer mongodb.Disconnect(ctx)
 
@@ -32,39 +35,46 @@ func main() {
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-shutdown
-		log.Println("Shutting down gracefully...")
+		utils.Log("Received shutdown signal, shutting down...")
 		cancel()
 	}()
 
 	// Initialize scrapers
 	scrapers := []scraper.Scraper{
-		sites.NewGradconScraper(),
+		//sites.NewGradconScraper(),
 		sites.NewProspleScraper(),
-		sites.NewLinkedinScraper(),
+		//sites.NewLinkedinScraper(),
 	}
 
 	// Initialize pipeline
 	processingPipeline := pipeline.NewPipeline(
-		steps.NewNormalizationStep(),
-		steps.NewDeduplicationStep(),
-		steps.NewMongoDBStep(mongodb.GetCollection()),
+		steps.NewLogStep("Initial"),
+		//steps.NewNormalizationStep(),
+		//steps.NewDeduplicationStep(),
+		//steps.NewMongoDBStep(mongodb.GetCollection()),
 	)
 
 	// Collect all listings from scrapers
+	utils.Log("Scraping section started.")
+
 	var allListings []models.Listing
 	for _, s := range scrapers {
+		utils.Log("Running scraper %s...", s.Name())
 		listings, err := s.Scrape(ctx)
 		if err != nil {
-			log.Printf("Error in %s scraper: %v", s.Name(), err)
+			utils.Error("Error in %s scraper: %v", s.Name(), err)
 			continue
 		}
+		utils.Log("Finished scraper %s with %d listings.", s.Name(), len(listings))
 		allListings = append(allListings, listings...)
 	}
 
+	utils.Log("Scraping section Finished. Starting Pipeline section..")
+
 	// Run pipeline with scrapers
 	if _, err := processingPipeline.Run(ctx, allListings); err != nil {
-		log.Printf("Error processing listings: %v", err)
+		utils.Error("Error processing listings: %v", err)
 	}
 
-	log.Println("Processing complete")
+	utils.Log("Processing complete")
 }
