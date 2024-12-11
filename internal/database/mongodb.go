@@ -89,6 +89,24 @@ func (m *MongoDB) CreateListing(listing models.Listing) error {
 	return nil
 }
 
+func (m *MongoDB) CreateListings(listings []models.Listing) error {
+	docs := make([]interface{}, len(listings))
+
+	for i, listing := range listings {
+		docs[i] = listing
+	}
+
+	result, err := m.collection.InsertMany(context.Background(), docs)
+
+	if err != nil {
+		utils.Log("Create Many Listings Result: %v", result)
+		return fmt.Errorf("failed to insert multiple listing: %w", err)
+	}
+
+	return nil
+}
+
+
 func (m *MongoDB) UpdateListing(listing models.Listing, id string) error {
 	result, err := m.collection.UpdateOne(context.Background(), id, listing)
 
@@ -111,7 +129,7 @@ func (m *MongoDB) GetListing(id string) (models.Listing, error) {
 	return listing, nil
 }
 
-// TODO:: Passing in a filter which can be nil (in which case all listings are returned)
+// TODO:: Pass in a filter which can be nil (in which case all listings are returned)
 func (m *MongoDB) GetListings() ([]models.Listing, error) {
 	var listings []models.Listing
 	cursor, err := m.collection.Find(context.Background(), bson.D{}) // Add filter options to bson.D object.
@@ -139,6 +157,19 @@ func (m *MongoDB) DeleteListing(id string) error {
 	if err != nil {
 		utils.Log("Delete Listing Result: %v", result)
 		return fmt.Errorf("failed to delete listing: %w", err)
+	}
+
+	return nil
+}
+
+// TODO:: Add filter options to bson.D object.
+func (m *MongoDB) DeleteListings() error {
+	utils.Log("[!] WARNING: This is a bulk delete operation and could potentially be dangerous")
+	result, err := m.collection.DeleteMany(context.Background(), bson.D{})
+
+	if err != nil {
+		utils.Log("Delete Many Result: %v", result)
+		return fmt.Errorf("failed to delete multiple listings: %w", err)
 	}
 
 	return nil
