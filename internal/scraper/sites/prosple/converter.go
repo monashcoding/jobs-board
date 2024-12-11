@@ -2,8 +2,9 @@ package prosple
 
 import (
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
 )
 
 func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listing, error) {
@@ -14,7 +15,7 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		Website: baseURL + opportunity.ParentEmployer.DetailPageUrl,
 	}
 
-	jobType := models.JobType(opportunity.OpportunityTypes[0].Label)
+	jobType := ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label) // TO BE IMPLEMENTED IN TICKET (MAC-63) 
 
 	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
 	if err != nil {
@@ -94,3 +95,12 @@ func ProspleWorkingRightsToWorkingRights(opportunity Opportunity) ([]models.Work
 	}
 	return workingRights, nil
 }
+
+func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error){
+	// Standardise the Prosple Job type to our Job type enums
+	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+
+
+	return , nil
+}
+
