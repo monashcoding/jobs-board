@@ -22,12 +22,12 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		return nil, fmt.Errorf("error parsing close date: %v", err)
 	}
 
-	locations, err := ProspleLocationsToLocationTypes(opportunity)
+	locations, err := ProspleLocationsToMPLOYLocationTypes(opportunity)
 	if err != nil {
 		return nil, fmt.Errorf("error getting locations: %v", err)
 	}
 
-	studyfield, err := ProspleStudyFieldsToStudyFields(opportunity)
+	studyfield, err := ProspleStudyFieldsToMPLOYStudyFields(opportunity)
 	if err != nil {
 		return nil, fmt.Errorf("error getting study fields: %v", err)
 	}
@@ -42,7 +42,7 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		parsedStartDate = time.Now()
 	}
 
-	workingRights, err := ProspleWorkingRightsToWorkingRights(opportunity)
+	workingRights, err := ProspleWorkingRightsToMPLOYWorkingRights(opportunity)
 	if err != nil {
 		return nil, fmt.Errorf("error getting working rights: %v", err)
 	}
@@ -64,7 +64,10 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 	}, nil
 }
 
-func ProspleLocationsToLocationTypes(opportunity Opportunity) ([]models.LocationType, error) {
+func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.LocationType, error) {
+	// TODO:: Extend this to match location type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+
 	locations := []models.LocationType{}
 	for _, location := range opportunity.PhysicalLocations {
 		locations = append(locations, models.LocationType(location.Label))
@@ -76,7 +79,7 @@ func ProspleLocationsToLocationTypes(opportunity Opportunity) ([]models.Location
 	return locations, nil
 }
 
-func ProspleStudyFieldsToStudyFields(opportunity Opportunity) ([]models.StudyField, error) {
+func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]models.StudyField, error) {
 	studyFields := []models.StudyField{}
 	for _, field := range opportunity.StudyFields {
 		studyFields = append(studyFields, models.StudyField(field.Label))
@@ -84,7 +87,10 @@ func ProspleStudyFieldsToStudyFields(opportunity Opportunity) ([]models.StudyFie
 	return studyFields, nil
 }
 
-func ProspleWorkingRightsToWorkingRights(opportunity Opportunity) ([]models.WorkingRight, error) {
+func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models.WorkingRight, error) {
+	// TODO:: Extend this to match working right type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+	
 	workingRights := []models.WorkingRight{}
 	for _, workingRight := range opportunity.WorkingRights {
 		workingRights = append(workingRights, models.WorkingRight(workingRight.Label))
