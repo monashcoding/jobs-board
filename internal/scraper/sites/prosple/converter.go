@@ -15,7 +15,7 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		Website: baseURL + opportunity.ParentEmployer.DetailPageUrl,
 	}
 
-	jobType := ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label) // TO BE IMPLEMENTED IN TICKET (MAC-63) 
+	jobType, err:= ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label) // TO BE IMPLEMENTED IN TICKET (MAC-63) 
 
 	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
 	if err != nil {
@@ -90,7 +90,7 @@ func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]models.Stu
 func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models.WorkingRight, error) {
 	// TODO:: Extend this to match working right type names to our Enum
 	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
-	
+
 	workingRights := []models.WorkingRight{}
 	for _, workingRight := range opportunity.WorkingRights {
 		workingRights = append(workingRights, models.WorkingRight(workingRight.Label))
@@ -107,6 +107,6 @@ func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error){
 	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
 
 
-	return , nil
+	return models.JobType(jobtype), nil
 }
 
