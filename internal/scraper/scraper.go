@@ -2,8 +2,9 @@ package scraper
 
 import (
 	"context"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
 
 	"github.com/gocolly/colly/v2"
 )
@@ -41,11 +42,11 @@ func NewCollyScraper() *CollyScraper {
 }
 
 // SetCollector allows replacing the collector for testing
-func (s *BaseScraper) SetCollector(c *colly.Collector) {
-	s.collector = c
-}
+// func (s *BaseScraper) SetCollector(c *colly.Collector) {
+// 	s.collector = c
+// }
 
-// GetCollector returns the current collector
-func (s *BaseScraper) GetCollector() *colly.Collector {
-	return s.collector
-}
+// // GetCollector returns the current collector
+// func (s *BaseScraper) GetCollector() *colly.Collector {
+// 	return s.collector
+// }
