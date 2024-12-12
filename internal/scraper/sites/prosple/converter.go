@@ -18,7 +18,8 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 
 	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing close date: %v", err)
+		fmt.Printf("warn: error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+		parsedCloseDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
 	}
 
 	locations, err := ProspleLocationsToLocationTypes(opportunity)
@@ -35,7 +36,8 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 	if opportunity.StartDate.Category != nil {
 		parsedStartDate, err = time.Parse("2006-01-02T15:04:05.000Z", opportunity.StartDate.Category.Label)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing start date: %v", err)
+			fmt.Printf("warn: error parsing start date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+			parsedStartDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
 		}
 	} else {
 		parsedStartDate = time.Now()
