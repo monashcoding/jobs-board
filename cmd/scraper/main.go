@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
-	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
-	"github.com/monashcoding/mploy-golang-core/internal/utils"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 
 	"github.com/monashcoding/mploy-golang-core/internal/database"
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
@@ -51,30 +52,33 @@ func main() {
 		steps.NewLogStep("Initial"),
 		//steps.NewNormalizationStep(),
 		//steps.NewDeduplicationStep(),
-		//steps.NewMongoDBStep(mongodb.GetCollection()),
+		steps.NewMongoDBStep(mongodb),
 	)
 
 	// Collect all listings from scrapers
-	utils.Log("Scraping section started.")
+	utils.Log("Scraping started...")
 
 	var allListings []models.Listing
 	for _, s := range scrapers {
 		utils.Log("Running scraper %s...", s.Name())
 		listings, err := s.Scrape(ctx)
 		if err != nil {
-			utils.Error("Error in %s scraper: %v", s.Name(), err)
+			utils.Error("[X] Error in %s scraper: %v", s.Name(), err)
 			continue
 		}
 		utils.Log("Finished scraper %s with %d listings.", s.Name(), len(listings))
 		allListings = append(allListings, listings...)
 	}
 
-	utils.Log("Scraping section Finished. Starting Pipeline section..")
+	utils.Log("Scraping section finished [\u2713]")
+	utils.Log("Starting pipeline section [...]")
 
 	// Run pipeline with scrapers
 	if _, err := processingPipeline.Run(ctx, allListings); err != nil {
 		utils.Error("Error processing listings: %v", err)
 	}
 
-	utils.Log("Processing complete")
+	utils.Log("Pipeline section finished [\u2713]")
+	
+	utils.Log("Processing completed [\u2713]")
 }

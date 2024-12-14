@@ -3,11 +3,14 @@ package database
 import (
 	"context"
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/utils"
 	"os"
 	"time"
 
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
@@ -72,5 +75,102 @@ func (m *MongoDB) Disconnect(ctx context.Context) error {
 	if err := m.client.Disconnect(ctx); err != nil {
 		return fmt.Errorf("failed to disconnect from MongoDB: %w", err)
 	}
+	return nil
+}
+
+func (m *MongoDB) CreateListing(listing models.Listing) error {
+	result, err := m.collection.InsertOne(context.Background(), listing)
+
+	if err != nil {
+		utils.Log("Create Listing Result: %v", result)
+		return fmt.Errorf("failed to insert listing: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MongoDB) CreateListings(listings []models.Listing) error {
+	docs := make([]interface{}, len(listings))
+
+	for i, listing := range listings {
+		docs[i] = listing
+	}
+
+	result, err := m.collection.InsertMany(context.Background(), docs)
+
+	if err != nil {
+		utils.Log("Create Many Listings Result: %v", result)
+		return fmt.Errorf("failed to insert multiple listing: %w", err)
+	}
+
+	return nil
+}
+
+
+func (m *MongoDB) UpdateListing(listing models.Listing, id string) error {
+	result, err := m.collection.UpdateOne(context.Background(), id, listing)
+
+	if err != nil {
+		utils.Log("Update Listing Result: %v", result)
+		return fmt.Errorf("failed to update listing: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MongoDB) GetListing(id string) (models.Listing, error) {
+	var listing models.Listing
+	err := m.collection.FindOne(context.Background(), id).Decode(&listing)
+
+	if err != nil {
+		return listing, fmt.Errorf("failed to get listing: %w", err)
+	}
+
+	return listing, nil
+}
+
+// TODO:: Pass in a filter which can be nil (in which case all listings are returned)
+func (m *MongoDB) GetListings() ([]models.Listing, error) {
+	var listings []models.Listing
+	cursor, err := m.collection.Find(context.Background(), bson.D{}) // Add filter options to bson.D object.
+
+	if err != nil {
+		return listings, fmt.Errorf("failed to get all listings: %w", err)
+	}
+
+	defer cursor.Close(context.Background())
+
+	for cursor.Next(context.Background()) {
+		var listing models.Listing
+		if err := cursor.Decode(&listing); err != nil {
+			return listings, fmt.Errorf("failed to decode listing: %w", err)
+		}
+		listings = append(listings, listing)
+	}
+
+	return listings, nil
+}
+
+func (m *MongoDB) DeleteListing(id string) error {
+	result, err := m.collection.DeleteOne(context.Background(), id)
+
+	if err != nil {
+		utils.Log("Delete Listing Result: %v", result)
+		return fmt.Errorf("failed to delete listing: %w", err)
+	}
+
+	return nil
+}
+
+// TODO:: Add filter options to bson.D object.
+func (m *MongoDB) DeleteListings() error {
+	utils.Log("[!] WARNING: This is a bulk delete operation and could potentially be dangerous")
+	result, err := m.collection.DeleteMany(context.Background(), bson.D{})
+
+	if err != nil {
+		utils.Log("Delete Many Result: %v", result)
+		return fmt.Errorf("failed to delete multiple listings: %w", err)
+	}
+
 	return nil
 }
