@@ -2,8 +2,9 @@ package scraper
 
 import (
 	"context"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
 
 	"github.com/gocolly/colly/v2"
 )
@@ -15,13 +16,13 @@ type Scraper interface {
 	Scrape(ctx context.Context) ([]models.Listing, error)
 }
 
-// BaseScraper provides common functionality for all scrapers
-type BaseScraper struct {
+// CollyScraper provides common functionality for all scrapers
+type CollyScraper struct {
 	collector *colly.Collector
 }
 
-// NewBaseScraper creates a new base scraper with configured Colly collector
-func NewBaseScraper() *BaseScraper {
+// NewCollyScraper creates a new base scraper with configured Colly collector
+func NewCollyScraper() *CollyScraper {
 	c := colly.NewCollector(
 		colly.UserAgent("MPLOY"),
 		colly.MaxDepth(2),
@@ -35,17 +36,17 @@ func NewBaseScraper() *BaseScraper {
 		Parallelism: 2,
 	})
 
-	return &BaseScraper{
+	return &CollyScraper{
 		collector: c,
 	}
 }
 
 // SetCollector allows replacing the collector for testing
-func (s *BaseScraper) SetCollector(c *colly.Collector) {
-	s.collector = c
-}
+// func (s *BaseScraper) SetCollector(c *colly.Collector) {
+// 	s.collector = c
+// }
 
-// GetCollector returns the current collector
-func (s *BaseScraper) GetCollector() *colly.Collector {
-	return s.collector
-}
+// // GetCollector returns the current collector
+// func (s *BaseScraper) GetCollector() *colly.Collector {
+// 	return s.collector
+// }

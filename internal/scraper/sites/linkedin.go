@@ -8,12 +8,12 @@ import (
 )
 
 type LinkedinScraper struct {
-	*scraper.BaseScraper
+	*scraper.CollyScraper
 }
 
 func NewLinkedinScraper() *LinkedinScraper {
 	return &LinkedinScraper{
-		BaseScraper: scraper.NewBaseScraper(),
+		CollyScraper: scraper.NewCollyScraper(),
 	}
 }
 

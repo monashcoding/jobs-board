@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 // Step represents a single processing step in the pipeline
@@ -29,10 +30,12 @@ func (p *Pipeline) Run(ctx context.Context, listings []models.Listing) ([]models
 	currentListings := listings
 
 	for _, step := range p.steps {
+		utils.Log("Running step: " + step.Name())
 		currentListings, err = step.Process(ctx, currentListings)
 		if err != nil {
 			return nil, fmt.Errorf("error in %s step: %w", step.Name(), err)
 		}
+		utils.Log("Finished step: " + step.Name())
 	}
 
 	return currentListings, nil

@@ -2,20 +2,18 @@ package steps
 
 import (
 	"context"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/monashcoding/mploy-golang-core/internal/database"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 type UploadStep struct {
-	collection *mongo.Collection
+	mongoDb *database.MongoDB
 }
 
-func NewMongoDBStep(collection *mongo.Collection) *UploadStep {
-	return &UploadStep{
-		collection: collection,
-	}
+func NewMongoDBStep(mongoDb *database.MongoDB) *UploadStep {
+	return &UploadStep{mongoDb}
 }
 
 func (s *UploadStep) Name() string {
@@ -23,22 +21,44 @@ func (s *UploadStep) Name() string {
 }
 
 func (s *UploadStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	/* ---------------------------------------------------------- /
+	| Naive sync strategy [To be replaced after MVP]        		  |
+	| 1. Delete all listings from DB                              |
+	| 2. Insert all listings from pipeline                        |
+	| 						                                                |	
+	| In future, need to think about a smarter way to handle      |
+	| updates and deletions. (How do we know a listing is expired |
+	| or updated?)                                                |
+	| ---------------------------------------------------------- */
+
 	if len(listings) == 0 {
 		return listings, nil
 	}
 
-	operations := make([]mongo.WriteModel, len(listings))
-	for i, listing := range listings {
-		operations[i] = mongo.NewUpdateOneModel().
-			SetUpsert(true).
-			SetFilter(bson.M{"id": listing.ID}).
-			SetUpdate(bson.M{"$set": listing})
-	}
+	// Sync with database
+	utils.Log("Starting database sync [...]")
 
-	_, err := s.collection.BulkWrite(ctx, operations)
+	utils.Log("Database sync step 1: Deleting all listings [...]")
+
+	err := s.mongoDb.DeleteListings() // Delete all listings
 	if err != nil {
-		return nil, err
+		utils.Error("[X] Failed to delete listings: %v", err)
+	}
+	utils.Log("Database sync step 1: Successfully deleted all listings [\u2713]")
+
+	utils.Log("Database sync step 2: Inserting all listings [...]")
+	err = s.mongoDb.CreateListings(listings) // Insert all listings
+	if err != nil {
+		utils.Error("[X] Failed to insert listings: %v", err)
+	}
+	utils.Log("Database sync step 2: Successfully inserted all listings [\u2713]")
+
+	dbListings, err := s.mongoDb.GetListings()
+	if err != nil {
+		utils.Error("[X] Failed to get listings from database: %v", err)
 	}
 
-	return listings, nil
+	utils.Log("Database Contains %d Listings", len(dbListings))
+	
+	return dbListings, nil
 }

@@ -1,168 +1,192 @@
 package sites
 
 import (
-	"fmt"
-	"log"
-	"strconv"
-	"github.com/chromedp/chromedp"
-	"github.com/gocolly/colly"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"time"
+
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
 )
 
-
-type Posting struct {
-	name            string
-	description     string
-	company         string
-	application_url string
-	source_url      string
-	classification  string
-	close_date      string
-	location        string
-	study_field     string
-	start_date      string
-	work_rights     string
+type GradconScraper struct {
+	*scraper.CollyScraper
 }
-
 
 func NewGradconScraper() *GradconScraper {
-	return ScrapeGradConnection()
-}
-
-func (p Posting) String() string {
-	return fmt.Sprintf("%s | %s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n...", p.company, p.name, p.description, p.classification, p.location, p.study_field, p.work_rights, p.close_date, p.start_date)
-}
-
-func scrapeIndividualJob(ctx context.Context, url string, postings []Posting) {
-	fmt.Println("Visiting Job Page:", url)
-	//initialising the new collector
-	c := colly.NewCollector(
-		colly.AllowedDomains("au.gradconnection.com"),
-	)
-
-	// extract job data
-	c.OnHTML(".full-content-container.employer-content-container", func(e *colly.HTMLElement) {
-		p := Posting{name: e.ChildText(".employers-profile-h1")}
-		p.company = e.ChildText(".employers-panel-title")
-		desc := e.ChildText(".campaign-content-container") // for now -> extract data from raw html with LLM later I think
-		if len(desc) > 250 {
-			p.description = desc[:250] + "..."
-		} else {
-			p.description = desc
-		}
-		p.application_url = "www.temp.com"
-		p.source_url = "https://au.gradconnection.com" + url
-		e.ForEach(".ellipsis-text-paragraph", func(i int, el *colly.HTMLElement) {
-			// Based on the sequence, you can assign the categories
-			if i == 0 {
-				p.study_field = el.Text
-			} else if i == 1 {
-				// You can use i here to differentiate by position
-				p.work_rights = el.Text
-			} else if i == 2 {
-				// Handle any other category based on sequence
-				p.location = el.Text
-			}
-		})
-		e.ForEach("li", func(i int, el *colly.HTMLElement) {
-			// Based on the sequence, you can assign the categories
-			if len(el.Text) > 13 && el.Text[:13] == "Closing Date:" {
-				p.close_date = el.Text[13:]
-			}
-			if len(el.Text) > 9 && el.Text[:9] == "Job type:" {
-				p.classification = el.Text[9:]
-			}
-			if len(el.Text) > 19 && el.Text[:19] == "POSITION START DATE" {
-				p.start_date = el.Text[19:]
-			}
-		})
-
-		postings = append(postings, p)
-		fmt.Println(p)
-	})
-
-	c.Visit("https://au.gradconnection.com" + url)
-}
-
-func ScrapeGradConnection() []Posting {
-	//collection of the job postings
-	var postings []Posting
-	maxPageNum := 0 // so we can stop paginating
-
-	c := colly.NewCollector(
-		colly.AllowedDomains("au.gradconnection.com"),
-	)
-	//logging in to grad connection
-	er := c.Post("https://au.gradconnection.com/api/authenticate/", map[string]string{"email": "zelolox1234@gmail.com", "password": "12345@Abcd"})
-	if er != nil {
-		log.Fatal("Logged in failed", er)
+	return &GradconScraper{
+		CollyScraper: scraper.NewCollyScraper(),
 	}
+}
 
-	// checking if login was sucessful
-	c.OnResponse(func(r *colly.Response) {
-		log.Println("Login Status: ", r.StatusCode)
-	})
+func (s *GradconScraper) Name() string {
+	return "GradConnections"
+}
 
-	// callback for pagination
-	c.OnHTML(".rc-pagination", func(e *colly.HTMLElement) {
-		if maxPageNum == 0 {
-			// identify final page number
-			// --> this only runs on the first visit
-			e.ForEach("li", func(i int, child *colly.HTMLElement) {
-				pageNum, err := strconv.Atoi(child.ChildText("a"))
-				if err != nil {
-					return // exit if the element doesnt contain a page number
-				}
-				if pageNum > maxPageNum {
-					maxPageNum = pageNum // update max
-				}
-			})
-			fmt.Println("Final Page:", maxPageNum)
-		}
-		// get current page number from url
-		pageUrl := e.Request.URL // URL object
-		q := pageUrl.Query()
-		pageNum, err := strconv.Atoi(q.Get("page"))
+func (s *GradconScraper) URL() string {
+	return "https://au.gradconnection.com/"
+}
+
+func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	numItemsOnPage := 20
+	num_pages := 2
+	listings := []models.Listing{}
+	//empListings := []tempListing{}
+	for i := 0; i < num_pages; i++ {
+		offset := i * numItemsOnPage
+		url := fmt.Sprintf("https://au.gradconnection.com/api/campaignsearch/?limit=20&offset=%d&recommended=true", offset)
+		fmt.Println(url)
+		// Create a new HTTP client
+		client := &http.Client{}
+
+		// Create a new request
+		req, err := http.NewRequest("GET", url, nil)
+
 		if err != nil {
-			// default to 1 if it fails
-			pageNum = 1
+			log.Fatal("Error creating request:", err)
 		}
-		fmt.Println("Page Number:", pageNum)
 
-		// traverse if we are not at the final page
-		if pageNum != maxPageNum {
-			nextPageNum := strconv.Itoa(pageNum + 1)
-			q.Set("page", nextPageNum)
-			pageUrl.RawQuery = q.Encode()
-			c.Visit(pageUrl.String())
+		// Send the request
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Fatal("Error making request:", err)
 		}
-	})
+		defer resp.Body.Close()
 
-	// visit each job
-	c.OnHTML(".campaign-listing-box", func(e *colly.HTMLElement) {
-		url := e.ChildAttr(".box-header-title", "href")
+		// Read the response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal("Error reading response:", err)
+		}
+		var result []map[string]interface{}
+		err = json.Unmarshal(body, &result)
+		if err != nil {
+			log.Fatal("Error unmarshalling response:", err)
+		}
+		for _, item := range result {
+			if campaigns, ok := item["campaigns"].([]interface{}); ok {
+				for _, campaign := range campaigns {
+					if campaignMap, ok := campaign.(map[string]interface{}); ok {
+						listing := models.Listing{}
+						//tempListing := tempListing{}
+						if title, ok := campaignMap["title"].(string); ok {
+							listing.Title = title
+							//tempListing.Title = title
+						} else {
+							fmt.Println("title key is missing or not a string")
+						}
+						if description, ok := campaignMap["description"].(string); ok {
+							listing.Description = description
+							//tempListing.Description = description
+						} else {
+							fmt.Println("description key is missing or not a string")
+						}
+						if companyMap, ok := item["customer_organization"].(map[string]interface{}); ok {
+							if companyName, ok := companyMap["name"].(string); ok {
+								listing.Company.Name = companyName
+								listing.Company.Website = ""
+								//tempListing.Company = companyName
+							} else {
+								fmt.Println("name key is missing or not a string in customer_organization")
+							}
+						} else {
 
-		ctx, cancel := chromedp.NewContext(context.Background())
-		defer cancel()
-		scrapeIndividualJob(ctx, url, postings)
-	})
+							fmt.Println(campaignMap["customer_organization"])
+							fmt.Println("customer_organization key is missing or not a map")
+						}
+						if applicationURL, ok := campaignMap["target_url"].(string); ok {
+							listing.ApplicationURL = applicationURL
+							//tempListing.ApplicationURL = applicationURL
+						} else {
+							fmt.Println("target_url key is missing or not a string")
+						}
+						if originTargetURL, ok := campaignMap["origin_target_url"].(string); ok {
 
-	c.OnRequest(func(r *colly.Request) {
-		fmt.Println("Visiting: ", r.URL.String())
-	})
+							listing.SourceURLs = append(listing.SourceURLs, originTargetURL) //originTargetURL
+							//tempListing.SourceURLs = originTargetURL
+						} else {
+							fmt.Println("origin_target_url key is missing or not a string")
+						}
+						listing.Type = "Internship"
+						if locations, ok := campaignMap["locations"].([]interface{}); ok {
+							for _, loc := range locations {
+								listing.Locations = append(listing.Locations, loc.(string))
+								//tempListing.Locations = append(tempListing.Locations, loc.(string))
 
-	c.OnError(func(r *colly.Response, err error) {
-		log.Println("Error: ", err)
-	})
+							}
+						} else {
+							fmt.Println("locations key is missing or not a slice")
+						}
+						if disciplines, ok := campaignMap["disciplines"].([]interface{}); ok {
 
-	//visiting grad connection
-	err := c.Visit("https://au.gradconnection.com/internships/")
-	if err != nil {
-		log.Fatal(err)
+							for _, d := range disciplines {
+								if discipline, ok := d.(string); ok {
+									listing.StudyFields = append(listing.StudyFields, discipline)
+									//tempListing.StudyFields = append(tempListing.StudyFields, discipline)
+								}
+							}
+						} else {
+							fmt.Println("disciplines key is missing or not a slice")
+						}
+						listing.CreatedAt = time.Now()
+						//tempListing.CreatedAt = time.Now().Format("2006-01-02")
+						if closeDate, ok := item["earliest_closing_date"]; ok {
+							closeDateStr, ok := closeDate.(string)
+
+							parsedTime, _ := time.Parse(time.RFC3339, closeDateStr)
+							if !ok {
+								log.Println("earliest_closing_date is not a string")
+							} else {
+								listing.CloseDate = &parsedTime
+								//tempListing.CloseDate = closeDateStr
+							}
+						} else {
+							log.Println("earliest_closing_date is missing")
+						}
+
+						if intervalMap, ok := campaignMap["interval"].(map[string]interface{}); ok {
+							if start, ok := intervalMap["start"].(string); ok {
+								// Use the start value as needed
+								parsedStart, _ := time.Parse(time.RFC3339, start)
+								listing.StartDate = parsedStart
+								//tempListing.StartDate = start
+							} else {
+								fmt.Println("start key is missing or not a string")
+							}
+						} else {
+							fmt.Println("interval key is missing or not a map")
+						}
+						if workRights, ok := campaignMap["work_rights"].([]interface{}); ok {
+							for _, right := range workRights {
+								if rightStr, ok := right.(string); ok {
+									// Process each working right as a string
+									listing.WorkingRights = append(listing.WorkingRights, rightStr)
+									//tempListing.WorkingRights = append(tempListing.WorkingRights, rightStr)
+								} else {
+									log.Println("A work right is not a string")
+								}
+							}
+						} else {
+							log.Println("work_rights key is missing or not a slice")
+						}
+						listing.UpdatedAt = time.Now()
+						//tempListing.UpdatedAt = time.Now().Format("2006-01-02")
+						//tempListings = append(tempListings, tempListing)
+						listings = append(listings, listing)
+					} else {
+						fmt.Println("Campaign is not a map")
+					}
+				}
+			} else {
+				fmt.Println("Campaigns not found or is not a slice")
+			}
+		}
+
 	}
-
-	return postings
+	fmt.Println(listings)
+	return listings, nil
 }
-
