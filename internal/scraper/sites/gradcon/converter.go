@@ -23,6 +23,8 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 			if err != nil {
 				return nil, fmt.Errorf("error getting study fields: %v", err)
 			}
+
+			jobType, err := GradConJobTypeToMPLOYJobType(campaign)
 			
 			closeDate := GetGradConCloseDate(campaign)
 			startDate := GetGradConStartDate(campaign)
@@ -44,7 +46,7 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 				},
 				ApplicationURL: campaign.OriginTargetURL,
 				SourceURLs:[]string{jobUrl},
-				Type: models.JobType(campaign.JobType),
+				Type: jobType,
 				CloseDate: &closeDate,
 				Locations: locations,
 				StudyFields: studyFields,
@@ -64,7 +66,7 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 
 func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]models.LocationType, error) {
 	// TODO:: Extend this to match location type names to our Enum
-	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
 	
 	locations := []models.LocationType{}
 	for _, location := range campaign.Locations {
@@ -126,11 +128,18 @@ func GetGradConCloseDate(campaign GradConnectCampaign) (time.Time) {
 
 func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]models.WorkingRight, error){
 	// TODO:: Extend this to match working right type names to our Enum
-	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
 
 	workingRights := []models.WorkingRight{}
 	for _, workRight := range campaign.WorkRights {
 		workingRights = append(workingRights, models.WorkingRight(workRight))
 	}
 	return workingRights, nil
+}
+
+func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType, error){
+	// TODO:: Extend this to match working right type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
+
+	return models.JobType(campaign.JobType), nil
 }
