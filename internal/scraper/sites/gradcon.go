@@ -3,6 +3,9 @@ package sites
 import (
 	"context"
 	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
+	"os"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
@@ -12,10 +15,39 @@ import (
 
 type GradconScraper struct {
 	*scraper.CollyScraper
+	unblocker unblocker.Service
 }
 
 func NewGradconScraper() *GradconScraper {
+	// Configure unblocker
+	config := unblocker.Config{
+		Features: unblocker.Features{
+			UseRateLimiting:    true,
+			UseIPRotation:      true,
+			UseBrowserProfiles: true,
+		},
+		BrightData: &unblocker.BrightDataConfig{
+			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
+			ZoneName:    os.Getenv("BRIGHTDATA_ZONE_NAME"),
+			Password:    os.Getenv("BRIGHTDATA_PASSWORD"),
+			Country:     "au",
+			UseLocalDNS: true,
+		},
+		Rate: &unblocker.RateLimitConfig{
+			RequestsPerMinute: 30,
+			BaseDelay:         time.Second * 2,
+			MaxJitter:         time.Second,
+		},
+	}
+
+	unblockerService, err := unblocker.NewService(config)
+	if err != nil {
+		utils.Error("Failed to initialize unblocker: %v", err)
+		return nil
+	}
+
 	return &GradconScraper{
+		unblocker:    unblockerService,
 		CollyScraper: scraper.NewCollyScraper(),
 	}
 }
@@ -36,8 +68,8 @@ func (s* GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Li
 	gradConnectApiUrl := s.API_URL()
 	var listings []models.Listing
 
-	result, err := gradcon.SendAPIRequest(gradConnectApiUrl, pageSize, offset)
-	
+	result, err := gradcon.SendAPIRequest(gradConnectApiUrl, pageSize, offset, s.unblocker)
+
 	if err != nil {
 		utils.Error("Failed to send API Request")
 	}

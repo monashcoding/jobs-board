@@ -1,7 +1,9 @@
 package gradcon
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"io"
 	"log"
 	"net/http"
@@ -47,12 +49,9 @@ type GradConnectCustomerOrganisation struct {
 	Slug string `json:"slug"`
 }
 
-func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
+func SendAPIRequest(url string, limit int, offset int, unblocker unblocker.Service) (*APIResponse, error) {
 	params := "?disciplines=computer-science&limit=20&limit=" + strconv.Itoa(limit) + "&offset=" + strconv.Itoa(offset) + "&recommended=true"
-	apiUrl := url + params;
-
-	// Create a new HTTP client
-	client := &http.Client{}
+	apiUrl := url + params
 
 	// Create a new request
 	req, err := http.NewRequest("GET", apiUrl, nil)
@@ -62,7 +61,7 @@ func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
 	}
 
 	// Send the request
-	resp, err := client.Do(req)
+	resp, err := unblocker.MakeRequest(context.Background(), req)
 	if err != nil {
 		log.Fatal("Error making request:", err)
 	}
