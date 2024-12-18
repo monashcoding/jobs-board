@@ -50,17 +50,17 @@ The final pipeline `upload.go` will upload / update the listings passed to it.
 ### Unblocker (`internal/unblocker`)
 The Unblocker service is an anti-detection and request management system.
 1. **BrightData Proxy Integration**: Uses a proxy service to automatically rotate through IP addresses
-    ```go
-    type BrightDataConfig struct {
-        CustomerID  string   // Your BrightData customer ID (e.g. hl_29d8sj2d)
-        ZoneName    string   // Your BrightData zone name (e.g. datacenter_proxy1)
-        Password    string   // Your BrightData password
-        Country     string   // Optional: Target country (e.g., "us", "uk")
-        State       string   // Optional: US state code (only when Country="us")
-        City        string   // Optional: Target city
-        UseLocalDNS bool     // Whether to use local DNS resolution
-    }
-    ```
+```go
+type BrightDataConfig struct {
+    CustomerID  string   // Your BrightData customer ID (e.g. hl_29d8sj2d)
+    ZoneName    string   // Your BrightData zone name (e.g. datacenter_proxy1)
+    Password    string   // Your BrightData password
+    Country     string   // Optional: Target country (e.g., "us", "uk")
+    State       string   // Optional: US state code (only when Country="us")
+    City        string   // Optional: Target city
+    UseLocalDNS bool     // Whether to use local DNS resolution
+}
+```
 2. **Browser Profile Management**: Consistent and realistic browser fingerprinting
 ```go
 type BrowserConfig struct {
