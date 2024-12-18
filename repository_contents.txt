@@ -1,0 +1,1842 @@
+// File: .env.example
+
+MONGODB_URI=
+MONGODB_DATABASE=
+MONGODB_COLLECTION=
+
+// File: cmd/repo-export/main.go
+
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+// Config holds the script configuration
+type Config struct {
+	ignoredExtensions map[string]bool
+	ignoredFiles      map[string]bool
+}
+
+func main() {
+	// Define flags
+	sourcePath := flag.String("source", ".", "Source directory path")
+	outputPath := flag.String("output", "repository_contents.txt", "Output file path")
+	ignoreExts := flag.String("ignore-ext", ".git,.gitignore,.idea,node_modules,.vscode,.env,.txt", "Comma-separated list of extensions/directories to ignore")
+	ignoreFiles := flag.String("ignore-files", "go.sum,cmd/repo2text/main.go,README.md,.DS_Store", "Comma-separated list of specific files to ignore")
+	flag.Parse()
+
+	// Initialize config
+	config := &Config{
+		ignoredExtensions: make(map[string]bool),
+		ignoredFiles:      make(map[string]bool),
+	}
+
+	// Process ignored extensions
+	for _, ext := range strings.Split(*ignoreExts, ",") {
+		ext = strings.TrimSpace(ext)
+		if ext != "" {
+			config.ignoredExtensions[ext] = true
+		}
+	}
+
+	// Process ignored files
+	for _, file := range strings.Split(*ignoreFiles, ",") {
+		file = strings.TrimSpace(file)
+		if file != "" {
+			config.ignoredFiles[file] = true
+		}
+	}
+
+	// Create output file
+	outputFile, err := os.Create(*outputPath)
+	if err != nil {
+		fmt.Printf("Error creating output file: %v\n", err)
+		os.Exit(1)
+	}
+	defer outputFile.Close()
+
+	// Process the repository
+	err = processRepository(*sourcePath, outputFile, config)
+	if err != nil {
+		fmt.Printf("Error processing repository: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Repository contents written to %s\n", *outputPath)
+}
+
+func processRepository(sourcePath string, output io.Writer, config *Config) error {
+	return filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip if it's a directory
+		if info.IsDir() {
+			// Check if directory should be ignored
+			if config.shouldIgnore(info.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Check if file should be ignored
+		if config.shouldIgnore(info.Name()) {
+			return nil
+		}
+
+		// Read file contents
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("error reading file %s: %w", path, err)
+		}
+
+		// Write file path and contents to output
+		relPath, err := filepath.Rel(sourcePath, path)
+		if err != nil {
+			return fmt.Errorf("error getting relative path for %s: %w", path, err)
+		}
+
+		// Write file header and contents
+		_, err = fmt.Fprintf(output, "// File: %s\n\n%s\n\n", relPath, string(content))
+		if err != nil {
+			return fmt.Errorf("error writing to output file: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (c *Config) shouldIgnore(name string) bool {
+	// Check if the file/directory is in the ignored files list
+	if c.ignoredFiles[name] {
+		return true
+	}
+
+	// Check if the file/directory extension is in the ignored extensions list
+	ext := filepath.Ext(name)
+	if c.ignoredExtensions[ext] {
+		return true
+	}
+
+	// Check if the entire name matches any ignored extension
+	// This handles directories like .git, node_modules, etc.
+	if c.ignoredExtensions[name] {
+		return true
+	}
+
+	return false
+}
+
+
+// File: cmd/scraper/main.go
+
+package main
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+
+	"github.com/monashcoding/mploy-golang-core/internal/database"
+	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites"
+)
+
+func main() {
+	utils.Log("Starting MPLOY Scraper.")
+
+	// Set up context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Set up MongoDB connection
+	utils.Log("Setting up MongoDB connection.")
+	mongodb, err := database.NewMongoDB(ctx)
+	if err != nil {
+		utils.Fatal("Failed to connect to MongoDB: %v", err)
+	}
+	defer mongodb.Disconnect(ctx)
+
+	// Set up graceful shutdown
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-shutdown
+		utils.Log("Received shutdown signal, shutting down...")
+		cancel()
+	}()
+
+	// Initialize scrapers
+	scrapers := []scraper.Scraper{
+		//sites.NewGradconScraper(),
+		sites.NewProspleScraper(),
+		//sites.NewLinkedinScraper(),
+	}
+
+	// Initialize pipeline
+	processingPipeline := pipeline.NewPipeline(
+		steps.NewLogStep("Initial"),
+		//steps.NewNormalizationStep(),
+		//steps.NewDeduplicationStep(),
+		steps.NewMongoDBStep(mongodb),
+	)
+
+	// Collect all listings from scrapers
+	utils.Log("Scraping started...")
+
+	var allListings []models.Listing
+	for _, s := range scrapers {
+		utils.Log("Running scraper %s...", s.Name())
+		listings, err := s.Scrape(ctx)
+		if err != nil {
+			utils.Error("[X] Error in %s scraper: %v", s.Name(), err)
+			continue
+		}
+		utils.Log("Finished scraper %s with %d listings.", s.Name(), len(listings))
+		allListings = append(allListings, listings...)
+	}
+
+	utils.Log("Scraping section finished [\u2713]")
+	utils.Log("Starting pipeline section [...]")
+
+	// Run pipeline with scrapers
+	if _, err := processingPipeline.Run(ctx, allListings); err != nil {
+		utils.Error("Error processing listings: %v", err)
+	}
+
+	utils.Log("Pipeline section finished [\u2713]")
+	
+	utils.Log("Processing completed [\u2713]")
+}
+
+
+// File: go.mod
+
+module github.com/monashcoding/mploy-golang-core
+
+go 1.23.3
+
+require (
+	github.com/gocolly/colly/v2 v2.1.0
+	github.com/joho/godotenv v1.5.1
+	go.mongodb.org/mongo-driver v1.17.1
+)
+
+require (
+	github.com/PuerkitoBio/goquery v1.10.0 // indirect
+	github.com/andybalholm/cascadia v1.3.2 // indirect
+	github.com/antchfx/htmlquery v1.3.3 // indirect
+	github.com/antchfx/xmlquery v1.4.2 // indirect
+	github.com/antchfx/xpath v1.3.2 // indirect
+	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/golang/snappy v0.0.4 // indirect
+	github.com/kennygrant/sanitize v1.2.4 // indirect
+	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/montanaflynn/stats v0.7.1 // indirect
+	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
+	github.com/temoto/robotstxt v1.1.2 // indirect
+	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
+	github.com/xdg-go/scram v1.1.2 // indirect
+	github.com/xdg-go/stringprep v1.0.4 // indirect
+	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
+	golang.org/x/crypto v0.29.0 // indirect
+	golang.org/x/net v0.31.0 // indirect
+	golang.org/x/sync v0.9.0 // indirect
+	golang.org/x/text v0.20.0 // indirect
+	google.golang.org/appengine v1.6.8 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
+)
+
+
+// File: internal/database/mongodb.go
+
+package database
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+
+	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
+)
+
+type MongoDB struct {
+	client     *mongo.Client
+	database   *mongo.Database
+	collection *mongo.Collection
+}
+
+func init() {
+	utils.Log("Loading environment variables from .env file...")
+	if err := godotenv.Load(); err != nil {
+		utils.Fatal(".env file not found: %v\n", err)
+	}
+	utils.Log("Environment variables loaded.")
+}
+
+// NewMongoDB creates a new MongoDB instance
+func NewMongoDB(ctx context.Context) (*MongoDB, error) {
+	// Configure client options
+	clientOptions := options.Client().
+		ApplyURI(os.Getenv("MONGODB_URI")).
+		SetConnectTimeout(10 * time.Second).
+		SetMaxConnIdleTime(60 * time.Second).
+		SetMinPoolSize(5).
+		SetMaxPoolSize(100)
+
+	// Create client
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MongoDB client: %w", err)
+	}
+
+	// Ping database to verify connection
+	ctxPing, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if err := client.Ping(ctxPing, readpref.Primary()); err != nil {
+		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
+	}
+
+	// Get database and collection
+	database := client.Database(os.Getenv("MONGODB_DATABASE"))
+	collection := database.Collection(os.Getenv("MONGODB_COLLECTION"))
+
+	return &MongoDB{
+		client:     client,
+		database:   database,
+		collection: collection,
+	}, nil
+}
+
+// GetCollection returns the MongoDB collection
+func (m *MongoDB) GetCollection() *mongo.Collection {
+	return m.collection
+}
+
+// Disconnect closes the MongoDB connection
+func (m *MongoDB) Disconnect(ctx context.Context) error {
+	if err := m.client.Disconnect(ctx); err != nil {
+		return fmt.Errorf("failed to disconnect from MongoDB: %w", err)
+	}
+	return nil
+}
+
+func (m *MongoDB) CreateListing(listing models.Listing) error {
+	result, err := m.collection.InsertOne(context.Background(), listing)
+
+	if err != nil {
+		utils.Log("Create Listing Result: %v", result)
+		return fmt.Errorf("failed to insert listing: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MongoDB) CreateListings(listings []models.Listing) error {
+	docs := make([]interface{}, len(listings))
+
+	for i, listing := range listings {
+		docs[i] = listing
+	}
+
+	result, err := m.collection.InsertMany(context.Background(), docs)
+
+	if err != nil {
+		utils.Log("Create Many Listings Result: %v", result)
+		return fmt.Errorf("failed to insert multiple listing: %w", err)
+	}
+
+	return nil
+}
+
+
+func (m *MongoDB) UpdateListing(listing models.Listing, id string) error {
+	result, err := m.collection.UpdateOne(context.Background(), id, listing)
+
+	if err != nil {
+		utils.Log("Update Listing Result: %v", result)
+		return fmt.Errorf("failed to update listing: %w", err)
+	}
+
+	return nil
+}
+
+func (m *MongoDB) GetListing(id string) (models.Listing, error) {
+	var listing models.Listing
+	err := m.collection.FindOne(context.Background(), id).Decode(&listing)
+
+	if err != nil {
+		return listing, fmt.Errorf("failed to get listing: %w", err)
+	}
+
+	return listing, nil
+}
+
+// TODO:: Pass in a filter which can be nil (in which case all listings are returned)
+func (m *MongoDB) GetListings() ([]models.Listing, error) {
+	var listings []models.Listing
+	cursor, err := m.collection.Find(context.Background(), bson.D{}) // Add filter options to bson.D object.
+
+	if err != nil {
+		return listings, fmt.Errorf("failed to get all listings: %w", err)
+	}
+
+	defer cursor.Close(context.Background())
+
+	for cursor.Next(context.Background()) {
+		var listing models.Listing
+		if err := cursor.Decode(&listing); err != nil {
+			return listings, fmt.Errorf("failed to decode listing: %w", err)
+		}
+		listings = append(listings, listing)
+	}
+
+	return listings, nil
+}
+
+func (m *MongoDB) DeleteListing(id string) error {
+	result, err := m.collection.DeleteOne(context.Background(), id)
+
+	if err != nil {
+		utils.Log("Delete Listing Result: %v", result)
+		return fmt.Errorf("failed to delete listing: %w", err)
+	}
+
+	return nil
+}
+
+// TODO:: Add filter options to bson.D object.
+func (m *MongoDB) DeleteListings() error {
+	utils.Log("[!] WARNING: This is a bulk delete operation and could potentially be dangerous")
+	result, err := m.collection.DeleteMany(context.Background(), bson.D{})
+
+	if err != nil {
+		utils.Log("Delete Many Result: %v", result)
+		return fmt.Errorf("failed to delete multiple listings: %w", err)
+	}
+
+	return nil
+}
+
+// File: internal/models/listing.go
+
+package models
+
+import (
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"time"
+)
+
+type JobType string
+
+const (
+	EOI        JobType = "EOI"
+	FIRST_YEAR JobType = "FIRST_YEAR"
+	INTERN     JobType = "INTERN"
+	GRADUATE   JobType = "GRADUATE"
+)
+
+type StudyField string
+
+const (
+	SOFTWARE      StudyField = "SOFTWARE"
+	CYBERSECURITY StudyField = "CYBERSECURITY"
+	DATA_SCIENCE  StudyField = "DATA_SCIENCE"
+)
+
+type LocationType string
+
+const (
+	VIC       LocationType = "VIC"
+	NSW       LocationType = "NSW"
+	QLD       LocationType = "QLD"
+	WA        LocationType = "WA"
+	NT        LocationType = "NT"
+	SA        LocationType = "SA"
+	HYBRID    LocationType = "HYBRID"
+	REMOTE    LocationType = "REMOTE"
+	AUSTRALIA LocationType = "AUSTRALIA"
+)
+
+type WorkingRight string
+
+const (
+	AUS_CITIZEN   WorkingRight = "AUS_CITIZEN"
+	AUS_PR        WorkingRight = "AUS_PR"
+	NZ_CITIZEN    WorkingRight = "NZ_CITIZEN"
+	NZ_PR         WorkingRight = "NZ_PR"
+	INTERNATIONAL WorkingRight = "INTERNATIONAL"
+)
+
+type Company struct {
+	Name    string `bson:"name" json:"name"`
+	Website string `bson:"website" json:"website"`
+}
+
+type Listing struct {
+	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Title          string             `bson:"title" json:"title"`
+	Description    string             `bson:"description" json:"description"`
+	Company        Company            `bson:"company" json:"company"`
+	ApplicationURL string             `bson:"application_url" json:"application_url"`
+	SourceURLs     []string           `bson:"source_urls" json:"source_urls"`
+	Type           JobType            `bson:"type" json:"type"`
+	CloseDate      *time.Time         `bson:"close_date,omitempty" json:"close_date"`
+	Locations      []LocationType     `bson:"locations" json:"locations"`
+	StudyFields    []StudyField       `bson:"study_fields" json:"study_fields"`
+	StartDate      time.Time          `bson:"start_date" json:"start_date"`
+	WorkingRights  []WorkingRight     `bson:"working_rights" json:"working_rights"`
+	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
+	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
+}
+
+
+// File: internal/models/prosple.go
+
+package models
+
+type GraphQLRequest struct {
+	Query     string                 `json:"query"`
+	Variables map[string]interface{} `json:"variables,omitempty"`
+}
+type GraphQLResponse struct {
+	Data struct {
+		OpportunitiesSearch struct {
+			ResultCount   int           `json:"resultCount"`
+			Opportunities []Opportunity `json:"opportunities"`
+		} `json:"opportunitiesSearch"`
+	} `json:"data"`
+	Errors []GraphQLError `json:"errors,omitempty"`
+}
+
+type Opportunity struct {
+	ID                    string `json:"id"`
+	Title                 string `json:"title"`
+	ApplyByUrl            string `json:"applyByUrl"`
+	DetailPageURl         string `json:"detailPageUrl"`
+	ApplicationsCloseDate string `json:"applicationsCloseDate"`
+	LocationDescription   string `json:"locationDescription"`
+
+	Overview struct {
+		Summary  string `json:"summary"`
+		FullText string `json:"fullText"`
+	} `json:"overview"`
+
+	ParentEmployer struct {
+		Title         string `json:"title"`
+		DetailPageUrl string `json:"detailPageUrl"`
+	} `json:"parentEmployer"`
+
+	OpportunityTypes []struct {
+		ID    string `json:"id"`
+		Label string `json:"label"`
+	} `json:"opportunityTypes"`
+
+	PhysicalLocations []struct {
+		Id    string `json:"id"`
+		Label string `json:"label"`
+
+		Children []struct {
+			Id    string `json:"id"`
+			Label string `json:"label"`
+		} `json:"children"`
+	} `json:"physicalLocations"`
+
+	StudyFields []struct {
+		Id    string `json:"id"`
+		Label string `json:"label"`
+
+		Children []struct {
+			Id    string `json:"id"`
+			Label string `json:"label"`
+		} `json:"children"`
+	} `json:"studyFields"`
+
+	StartDate struct {
+		Category *struct {
+			Id    string `json:"id"`
+			Label string `json:"label"`
+		} `json:"category"`
+	} `json:"startDate"`
+
+	WorkingRights []struct {
+		Id    string `json:"id"`
+		Label string `json:"label"`
+
+		Children []struct {
+			Id    string `json:"id"`
+			Label string `json:"label"`
+		} `json:"children"`
+	} `json:"workingRights"`
+}
+
+type GraphQLError struct {
+	Message string `json:"message"`
+}
+
+
+// File: internal/pipeline/pipeline.go
+
+package pipeline
+
+import (
+	"context"
+	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+// Step represents a single processing step in the pipeline
+type Step interface {
+	Name() string
+	Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error)
+}
+
+// Pipeline manages the processing steps
+type Pipeline struct {
+	steps []Step
+}
+
+func NewPipeline(steps ...Step) *Pipeline {
+	return &Pipeline{
+		steps: steps,
+	}
+}
+
+// Run executes all pipeline steps in order
+func (p *Pipeline) Run(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	var err error
+	currentListings := listings
+
+	for _, step := range p.steps {
+		utils.Log("Running step: " + step.Name())
+		currentListings, err = step.Process(ctx, currentListings)
+		if err != nil {
+			return nil, fmt.Errorf("error in %s step: %w", step.Name(), err)
+		}
+		utils.Log("Finished step: " + step.Name())
+	}
+
+	return currentListings, nil
+}
+
+
+// File: internal/pipeline/steps/deduplication.go
+
+package steps
+
+import (
+	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+)
+
+type DeduplicationStep struct {
+	seenHashes map[string]bool
+}
+
+func NewDeduplicationStep() *DeduplicationStep {
+	return &DeduplicationStep{
+		seenHashes: make(map[string]bool),
+	}
+}
+
+func (s *DeduplicationStep) Name() string {
+	return "Deduplication"
+}
+
+func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	unique := make([]models.Listing, 0, len(listings))
+
+	// process and insert listings. objects with existing IDs will be overwritten
+
+	return unique, nil
+}
+
+
+// File: internal/pipeline/steps/log.go
+
+package steps
+
+import (
+	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+	"strings"
+)
+
+type LogStep struct {
+	prefix string
+}
+
+func NewLogStep(prefix string) *LogStep {
+	return &LogStep{
+		prefix: prefix,
+	}
+}
+
+func (s *LogStep) Name() string {
+	return "Log"
+}
+
+func (s *LogStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	utils.Log("\n=== %s: Processing %d listings ===", s.prefix, len(listings))
+
+	for _, listing := range listings {
+		// Create a compact location string
+		locations := strings.Join(compactStringSlice(locationsToStrings(listing.Locations)), "/")
+
+		// Get company name or "Unknown"
+		company := listing.Company.Name
+		if company == "" {
+			company = "Unknown"
+		}
+
+		// Format close date if exists
+		closeDate := "No close date"
+		if listing.CloseDate != nil {
+			closeDate = listing.CloseDate.Format("2006-01-02")
+		}
+
+		// Create compact string for study fields
+		fields := strings.Join(compactStringSlice(studyFieldsToStrings(listing.StudyFields)), "/")
+		if fields == "" {
+			fields = "Any"
+		}
+
+		// Print compact single-line summary
+		utils.Log("[%s] %s @ %s | Type: %s | Loc: %s | Fields: %s | Closes: %s | URL: %s",
+			listing.ID.Hex()[:8],
+			truncateString(listing.Title, 40),
+			company,
+			listing.Type,
+			locations,
+			fields,
+			closeDate,
+			truncateString(listing.ApplicationURL, 40),
+		)
+	}
+	return listings, nil
+}
+
+// Helper functions
+
+func truncateString(s string, length int) string {
+	if len(s) <= length {
+		return s
+	}
+	return s[:length-3] + "..."
+}
+
+func compactStringSlice(slice []string) []string {
+	if len(slice) <= 3 {
+		return slice
+	}
+	return append(slice[:2], "...")
+}
+
+func locationsToStrings(locs []models.LocationType) []string {
+	result := make([]string, len(locs))
+	for i, loc := range locs {
+		result[i] = string(loc)
+	}
+	return result
+}
+
+func studyFieldsToStrings(fields []models.StudyField) []string {
+	result := make([]string, len(fields))
+	for i, field := range fields {
+		result[i] = string(field)
+	}
+	return result
+}
+
+
+// File: internal/pipeline/steps/normalization.go
+
+package steps
+
+import (
+	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+)
+
+type NormalizationStep struct{}
+
+func NewNormalizationStep() *NormalizationStep {
+	return &NormalizationStep{}
+}
+
+func (s *NormalizationStep) Name() string {
+	return "Normalization"
+}
+
+func (s *NormalizationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	normalized := make([]models.Listing, len(listings))
+
+	// process and insert listings
+
+	return normalized, nil
+}
+
+
+// File: internal/pipeline/steps/normalization_test.go
+
+package steps
+
+import (
+	pipelinetesting "github.com/monashcoding/mploy-golang-core/internal/pipeline/testing"
+	"testing"
+)
+
+func TestNormalizationStep_Process(t *testing.T) {
+	step := NewNormalizationStep()
+	suite := pipelinetesting.NewPipelineStepTestSuite(t, step, "testdata/normalization")
+
+	testCases := []pipelinetesting.TestCase{
+		{
+			Name:       "clean_data",
+			InputFile:  "clean/input.json",
+			OutputFile: "clean/output.json",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.RunTestCase(tc)
+	}
+}
+
+
+// File: internal/pipeline/steps/testdata/normalization/clean/input.json
+
+[
+  {
+    "title": "   Software    Engineer   ",
+    "description": "\n\nA description with \t weird spacing\n\n",
+    "company": {
+      "name": " Tech   Corp ",
+      "website": " https://techcorp.com "
+    },
+    "type": "GRADUATE",
+    "locations": ["VIC"],
+    "study_fields": ["SOFTWARE"]
+  }
+]
+
+// File: internal/pipeline/steps/testdata/normalization/clean/output.json
+
+[
+  {
+    "title": "Software Engineer",
+    "description": "A description with weird spacing",
+    "company": {
+      "name": "Tech Corp",
+      "website": "https://techcorp.com"
+    },
+    "type": "GRADUATE",
+    "locations": ["VIC"],
+    "study_fields": ["SOFTWARE"]
+  }
+]
+
+// File: internal/pipeline/steps/upload.go
+
+package steps
+
+import (
+	"context"
+
+	"github.com/monashcoding/mploy-golang-core/internal/database"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+type UploadStep struct {
+	mongoDb *database.MongoDB
+}
+
+func NewMongoDBStep(mongoDb *database.MongoDB) *UploadStep {
+	return &UploadStep{mongoDb}
+}
+
+func (s *UploadStep) Name() string {
+	return "Upload"
+}
+
+func (s *UploadStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	/* ---------------------------------------------------------- /
+	| Naive sync strategy [To be replaced after MVP]        		  |
+	| 1. Delete all listings from DB                              |
+	| 2. Insert all listings from pipeline                        |
+	| 						                                                |	
+	| In future, need to think about a smarter way to handle      |
+	| updates and deletions. (How do we know a listing is expired |
+	| or updated?)                                                |
+	| ---------------------------------------------------------- */
+
+	if len(listings) == 0 {
+		return listings, nil
+	}
+
+	// Sync with database
+	utils.Log("Starting database sync [...]")
+
+	utils.Log("Database sync step 1: Deleting all listings [...]")
+
+	err := s.mongoDb.DeleteListings() // Delete all listings
+	if err != nil {
+		utils.Error("[X] Failed to delete listings: %v", err)
+	}
+	utils.Log("Database sync step 1: Successfully deleted all listings [\u2713]")
+
+	utils.Log("Database sync step 2: Inserting all listings [...]")
+	err = s.mongoDb.CreateListings(listings) // Insert all listings
+	if err != nil {
+		utils.Error("[X] Failed to insert listings: %v", err)
+	}
+	utils.Log("Database sync step 2: Successfully inserted all listings [\u2713]")
+
+	dbListings, err := s.mongoDb.GetListings()
+	if err != nil {
+		utils.Error("[X] Failed to get listings from database: %v", err)
+	}
+
+	utils.Log("Database Contains %d Listings", len(dbListings))
+	
+	return dbListings, nil
+}
+
+
+// File: internal/pipeline/testing/suite.go
+
+package testing
+
+import (
+	"context"
+	"encoding/json"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// TestCase represents a single test scenario for a pipeline step
+type TestCase struct {
+	Name        string
+	InputFile   string // JSON file containing input listings
+	OutputFile  string // JSON file containing expected output listings
+	ExpectError bool
+}
+
+// PipelineStepTestSuite provides common testing functionality for pipeline steps
+type PipelineStepTestSuite struct {
+	T        *testing.T
+	Step     pipeline.Step
+	TestData string // Base path for test data
+}
+
+// NewPipelineStepTestSuite creates a new test suite for a pipeline step
+func NewPipelineStepTestSuite(t *testing.T, step pipeline.Step, testDataPath string) *PipelineStepTestSuite {
+	return &PipelineStepTestSuite{
+		T:        t,
+		Step:     step,
+		TestData: testDataPath,
+	}
+}
+
+// loadListings loads listings from a JSON file
+func (s *PipelineStepTestSuite) loadListings(filename string) []models.Listing {
+	path := filepath.Join(s.TestData, filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		s.T.Fatalf("Failed to read listings file %s: %v", filename, err)
+	}
+
+	var listings []models.Listing
+	if err := json.Unmarshal(data, &listings); err != nil {
+		s.T.Fatalf("Failed to unmarshal listings from %s: %v", filename, err)
+	}
+
+	return listings
+}
+
+// compareListings compares two slices of listings
+func (s *PipelineStepTestSuite) compareListings(t *testing.T, got, want []models.Listing) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Errorf("Got %d listings, want %d", len(got), len(want))
+		return
+	}
+
+	for i := range got {
+		gotJSON, err := json.Marshal(got[i])
+		if err != nil {
+			t.Fatalf("Failed to marshal got listing: %v", err)
+		}
+
+		wantJSON, err := json.Marshal(want[i])
+		if err != nil {
+			t.Fatalf("Failed to marshal want listing: %v", err)
+		}
+
+		if string(gotJSON) != string(wantJSON) {
+			t.Errorf("Listing %d doesn't match:\ngot:  %s\nwant: %s", i, gotJSON, wantJSON)
+		}
+	}
+}
+
+// RunTestCase executes a single test case
+func (s *PipelineStepTestSuite) RunTestCase(tc TestCase) {
+	s.T.Helper()
+	s.T.Run(tc.Name, func(t *testing.T) {
+		// Load input listings
+		input := s.loadListings(tc.InputFile)
+
+		// Run the step
+		got, err := s.Step.Process(context.Background(), input)
+
+		// Check error expectation
+		if (err != nil) != tc.ExpectError {
+			t.Errorf("Process() error = %v, expectError %v", err, tc.ExpectError)
+			return
+		}
+
+		if !tc.ExpectError {
+			// Load and compare expected output
+			want := s.loadListings(tc.OutputFile)
+			s.compareListings(t, got, want)
+		}
+	})
+}
+
+
+// File: internal/scraper/scraper.go
+
+package scraper
+
+import (
+	"context"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+
+	"github.com/gocolly/colly/v2"
+)
+
+// Scraper interface defines methods that each site scraper must implement
+type Scraper interface {
+	Name() string
+	URL() string // Each scraper defines its own URLs
+	Scrape(ctx context.Context) ([]models.Listing, error)
+}
+
+// CollyScraper provides common functionality for all scrapers
+type CollyScraper struct {
+	collector *colly.Collector
+}
+
+// NewCollyScraper creates a new base scraper with configured Colly collector
+func NewCollyScraper() *CollyScraper {
+	c := colly.NewCollector(
+		colly.UserAgent("MPLOY"),
+		colly.MaxDepth(2),
+		colly.Async(true),
+	)
+
+	// Set up rate limiting
+	c.Limit(&colly.LimitRule{
+		DomainGlob:  "*",
+		RandomDelay: 5 * time.Second,
+		Parallelism: 2,
+	})
+
+	return &CollyScraper{
+		collector: c,
+	}
+}
+
+// SetCollector allows replacing the collector for testing
+// func (s *BaseScraper) SetCollector(c *colly.Collector) {
+// 	s.collector = c
+// }
+
+// // GetCollector returns the current collector
+// func (s *BaseScraper) GetCollector() *colly.Collector {
+// 	return s.collector
+// }
+
+
+// File: internal/scraper/sites/gradcon.go
+
+package sites
+
+import (
+	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+)
+
+type GradconScraper struct {
+	*scraper.CollyScraper
+}
+
+func NewGradconScraper() *GradconScraper {
+	return &GradconScraper{
+		CollyScraper: scraper.NewCollyScraper(),
+	}
+}
+
+func (s *GradconScraper) Name() string {
+	return "GradConnections"
+}
+
+func (s *GradconScraper) URL() string {
+	return "https://au.gradconnection.com/"
+}
+
+func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	return nil, nil
+}
+
+
+// File: internal/scraper/sites/gradcon_test.go
+
+package sites
+
+import (
+	scrapertesting "github.com/monashcoding/mploy-golang-core/internal/scraper/testing"
+	"testing"
+)
+
+func TestGradconScraper_Scrape(t *testing.T) {
+	scraper := NewGradconScraper()
+	suite := scrapertesting.NewScraperTestSuite(t, scraper, "testdata/gradcon")
+
+	testCases := []scrapertesting.TestCase{
+		{
+			Name:          "successful_scrape",
+			FixtureFolder: "success",
+			ExpectedFile:  "success/expected.json",
+			FixtureMapping: map[string]string{
+				"https://au.gradconnection.com/": "success/main_page.html",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.RunTestCase(tc)
+	}
+}
+
+
+// File: internal/scraper/sites/linkedin.go
+
+package sites
+
+import (
+	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+)
+
+type LinkedinScraper struct {
+	*scraper.CollyScraper
+}
+
+func NewLinkedinScraper() *LinkedinScraper {
+	return &LinkedinScraper{
+		CollyScraper: scraper.NewCollyScraper(),
+	}
+}
+
+func (s *LinkedinScraper) Name() string {
+	return "Linkedin"
+}
+
+func (s *LinkedinScraper) URL() string {
+	return "https://www.linkedin.com/jobs/"
+}
+
+func (s *LinkedinScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	return nil, nil
+}
+
+
+// File: internal/scraper/sites/prosple/converter.go
+
+package prosple
+
+import (
+	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"time"
+)
+
+func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listing, error) {
+	sourceUrl := baseURL + opportunity.DetailPageURl
+
+	company := models.Company{
+		Name:    opportunity.ParentEmployer.Title,
+		Website: baseURL + opportunity.ParentEmployer.DetailPageUrl,
+	}
+
+	jobType := models.JobType(opportunity.OpportunityTypes[0].Label)
+
+	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing close date: %v", err)
+	}
+
+	locations, err := ProspleLocationsToLocationTypes(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting locations: %v", err)
+	}
+
+	studyfield, err := ProspleStudyFieldsToStudyFields(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting study fields: %v", err)
+	}
+
+	var parsedStartDate time.Time
+	if opportunity.StartDate.Category != nil {
+		parsedStartDate, err = time.Parse("2006-01-02T15:04:05.000Z", opportunity.StartDate.Category.Label)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing start date: %v", err)
+		}
+	} else {
+		parsedStartDate = time.Now()
+	}
+
+	workingRights, err := ProspleWorkingRightsToWorkingRights(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting working rights: %v", err)
+	}
+
+	return &models.Listing{
+		Title:          opportunity.Title,
+		Description:    opportunity.Overview.FullText,
+		Company:        company,
+		ApplicationURL: opportunity.ApplyByUrl,
+		SourceURLs:     []string{sourceUrl},
+		Type:           jobType,
+		CloseDate:      &parsedCloseDate,
+		Locations:      locations,
+		StudyFields:    studyfield,
+		StartDate:      parsedStartDate,
+		WorkingRights:  workingRights,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}, nil
+}
+
+func ProspleLocationsToLocationTypes(opportunity Opportunity) ([]models.LocationType, error) {
+	locations := []models.LocationType{}
+	for _, location := range opportunity.PhysicalLocations {
+		locations = append(locations, models.LocationType(location.Label))
+
+		for _, childLocation := range location.Children {
+			locations = append(locations, models.LocationType(childLocation.Label))
+		}
+	}
+	return locations, nil
+}
+
+func ProspleStudyFieldsToStudyFields(opportunity Opportunity) ([]models.StudyField, error) {
+	studyFields := []models.StudyField{}
+	for _, field := range opportunity.StudyFields {
+		studyFields = append(studyFields, models.StudyField(field.Label))
+	}
+	return studyFields, nil
+}
+
+func ProspleWorkingRightsToWorkingRights(opportunity Opportunity) ([]models.WorkingRight, error) {
+	workingRights := []models.WorkingRight{}
+	for _, workingRight := range opportunity.WorkingRights {
+		workingRights = append(workingRights, models.WorkingRight(workingRight.Label))
+
+		for _, child := range workingRight.Children {
+			workingRights = append(workingRights, models.WorkingRight(child.Label))
+		}
+	}
+	return workingRights, nil
+}
+
+
+// File: internal/scraper/sites/prosple/graphql.go
+
+package prosple
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+type GraphQLRequest struct {
+	Query     string                 `json:"query"`
+	Variables map[string]interface{} `json:"variables"`
+}
+
+type GraphQLResponse struct {
+	Data   ResponseData `json:"data"`
+	Errors []Error      `json:"errors,omitempty"`
+}
+
+type ResponseData struct {
+	OpportunitiesSearch SearchResult `json:"opportunitiesSearch"`
+}
+
+type SearchResult struct {
+	Opportunities []Opportunity `json:"opportunities"`
+}
+
+type Opportunity struct {
+	Title         string `json:"title"`
+	DetailPageURl string `json:"detailPageUrl"`
+	Overview      struct {
+		FullText string `json:"fullText"`
+	} `json:"overview"`
+	ParentEmployer struct {
+		Title         string `json:"title"`
+		DetailPageUrl string `json:"detailPageUrl"`
+	} `json:"parentEmployer"`
+	ApplyByUrl            string `json:"applyByUrl"`
+	ApplicationsCloseDate string `json:"applicationsCloseDate"`
+	OpportunityTypes      []struct {
+		Label string `json:"label"`
+	} `json:"opportunityTypes"`
+	StartDate struct {
+		Category *struct {
+			Label string `json:"label"`
+		} `json:"category"`
+	} `json:"startDate"`
+	PhysicalLocations []struct {
+		Label    string `json:"label"`
+		Children []struct {
+			Label string `json:"label"`
+		} `json:"children"`
+	} `json:"physicalLocations"`
+	StudyFields []struct {
+		Label string `json:"label"`
+	} `json:"studyFields"`
+	WorkingRights []struct {
+		Label    string `json:"label"`
+		Children []struct {
+			Label string `json:"label"`
+		} `json:"children"`
+	} `json:"workingRights"`
+}
+
+type Error struct {
+	Message string `json:"message"`
+}
+
+func SendGraphQLQuery(url string, query string, variables map[string]interface{}) (*GraphQLResponse, error) {
+	requestBody := GraphQLRequest{
+		Query:     query,
+		Variables: variables,
+	}
+
+	utils.Log("Sending GraphQL request [...]")
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		utils.Log("Failed to marshal request body: %v", err)
+		return nil, fmt.Errorf("failed to marshal request body: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		utils.Log("Failed to create request: %v", err)
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP error: %s, %v", resp.Status, string(body))
+	}
+
+	utils.Log("GraphQL response successfully received [\u2713]")
+
+	var graphqlResp GraphQLResponse
+	if err := json.Unmarshal(body, &graphqlResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
+	}
+
+	if len(graphqlResp.Errors) > 0 {
+		return nil, fmt.Errorf("GraphQL error: %v", graphqlResp.Errors)
+	}
+
+	utils.Log("Reponse body successfully parsed [\u2713]")
+
+	return &graphqlResp, nil
+}
+
+func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
+	return map[string]interface{}{
+		"parameters": map[string]interface{}{
+			"gid": "6",
+			"range": map[string]interface{}{
+				"offset": offset,
+				"limit":  limit,
+			},
+			"sortBy": map[string]interface{}{
+				"criteria":  "NEWEST_OPPORTUNITIES", // NEWEST_OPPORTUNITIES, POPULARITY, CLOSING_DATE
+				"direction": "DESC",
+			},
+			"subscriptionTierEpicVariation": "THIRD_VARIATION",
+			"keywords":                      "",
+			"experiments": map[string]interface{}{
+				"bidKeyword": map[string]interface{}{
+					"enabled": false,
+				},
+				"sortByBidPopularityKeyword": "SECOND_VARIATION",
+			},
+			"selectedStartDateRangeFacet": nil,
+			"selectedLocationFacets": []map[string]interface{}{
+				{
+					"id":          "9692", // 9692 = Australia
+					"childFacets": []interface{}{},
+				},
+			},
+			"selectedStudyFieldFacets": []map[string]interface{}{
+				{
+					"id": "502", // 502 = IT & Computer Science
+				},
+			},
+			"selectedWorkRightsType": []map[string]interface{}{
+				{ "id": "29059" }, // 29059 = Australian Citizen
+				{ "id": "29060" }, // 29060 = Australian Permanent Resident
+				{ "id": "29061" }, // 29061 = International Student/Graduate Visa
+				{ "id": "29062" }, // 29062 = Australian Work Visa (All Other)
+				{ "id": "29063" }, // 29063 = Visa Sponsorship Included
+			},
+		},
+	}
+}
+
+func GetGraphQlQuery() string {
+	return `query OpportunitiesSearch($parameters: OpportunitiesSearchInput!) {
+  opportunitiesSearch(parameters: $parameters) {
+    opportunities {
+      id
+      title
+      applyByUrl
+      overview {
+        fullText
+      }
+      opportunityTypes {
+        label
+      }
+      applicationsCloseDate
+      locationDescription
+      studyFields{
+        label
+      }
+      physicalLocations{
+        label
+        children{
+          label
+        }
+      }
+      parentEmployer{
+        title
+      }
+      workingRights{
+        children{
+          label
+        }
+      }
+      }
+    }
+  }`
+}
+
+
+
+
+// File: internal/scraper/sites/prosple.go
+
+package sites
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+type ProspleScraper struct{}
+
+func NewProspleScraper() *ProspleScraper {
+	return &ProspleScraper{}
+}
+
+func (s *ProspleScraper) Name() string {
+	return "Prosple"
+}
+
+func (s *ProspleScraper) URL() string {
+	return "https://au.prosple.com"
+}
+
+func (s *ProspleScraper) API_URL() string {
+	return "https://prosple-gw.global.ssl.fastly.net/internal"
+}
+
+func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int) ([]models.Listing, error)  {
+	prospleApiUrl := s.API_URL()
+	var listings []models.Listing
+
+	query := prosple.GetGraphQlQuery()
+	variables := prosple.GetGraphQlVariables(offset, pageSize)
+
+	response, err := prosple.SendGraphQLQuery(prospleApiUrl, query, variables)
+
+	if err != nil {
+		return nil, fmt.Errorf("GraphQL query failed: %v", err)
+	}
+
+	for _, opp := range response.Data.OpportunitiesSearch.Opportunities {
+		listing, err := prosple.OpportunityToModel(s.URL(), opp)
+		if err != nil {
+			fmt.Printf("Error converting opportunity to model: %v\n", err)
+			continue
+		}
+		listings = append(listings, *listing)
+	}
+
+	return listings, nil
+}
+
+func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	var listings []models.Listing
+	pages := 2 // Number of pages to scrape
+	pageSize := 50 // Number of listings per page
+
+	// Scrape all listings
+	scrapeAll := true 
+	if scrapeAll {
+		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
+		for i := 0; ; i++ {
+			utils.Log("Fully Scraping Prosple: Page %d", i + 1)
+
+			newListings, err := s.PerformGraphQLScrape( i * pageSize, pageSize)
+
+			if (err != nil) {
+				return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
+			}
+
+			if len(newListings) != pageSize {
+				// End of results
+				listings = append(listings, newListings...)
+				break;
+			}
+
+			listings = append(listings, newListings...)
+		}
+		
+		return listings, nil
+	}
+
+
+	// Scrape a fixed number of pages
+	for i := 0; i < pages; i++ {		
+		utils.Log("Scraping Prosple: Page %d of %d...", i + 1, pages)
+
+		newListings, err := s.PerformGraphQLScrape(i * pageSize, pageSize)
+
+		if (err != nil) {
+			return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
+		}
+
+		listings = append(listings, newListings...)
+	}
+
+	return listings, nil
+}
+
+
+// File: internal/scraper/sites/testdata/gradcon/success/expected.json
+
+
+
+// File: internal/scraper/sites/testdata/gradcon/success/main_page.html
+
+
+
+// File: internal/scraper/testing/suite.go
+
+package testing
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"github.com/gocolly/colly/v2"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// TestCase represents a single test scenario for a scraper
+type TestCase struct {
+	Name           string
+	FixtureFolder  string
+	ExpectedFile   string // JSON file containing expected listings
+	ExpectError    bool
+	FixtureMapping map[string]string // Maps URLs to fixture files
+}
+
+// ScraperTestSuite provides common testing functionality for scrapers
+type ScraperTestSuite struct {
+	T        *testing.T
+	Scraper  scraper.Scraper
+	TestData string // Base path for test data
+}
+
+// mockTransport implements http.RoundTripper for serving local test files
+type mockTransport struct {
+	t              *testing.T
+	fixtureMapping map[string]string
+	basePath       string
+}
+
+func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Get the fixture file for this URL
+	fixtureFile, exists := m.fixtureMapping[req.URL.String()]
+	if !exists {
+		m.t.Fatalf("No fixture mapping found for URL: %s", req.URL.String())
+	}
+
+	// Load the fixture
+	filename := filepath.Join(m.basePath, fixtureFile)
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		m.t.Fatalf("Failed to read test fixture %s: %v", filename, err)
+	}
+
+	// Create mock response
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader(content)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+// NewScraperTestSuite creates a new test suite for a scraper
+func NewScraperTestSuite(t *testing.T, scraper scraper.Scraper, testDataPath string) *ScraperTestSuite {
+	return &ScraperTestSuite{
+		T:        t,
+		Scraper:  scraper,
+		TestData: testDataPath,
+	}
+}
+
+// RunTestCase executes a single test case
+func (s *ScraperTestSuite) RunTestCase(tc TestCase) {
+	s.T.Helper()
+	s.T.Run(tc.Name, func(t *testing.T) {
+		// Create a new collector with mocked transport
+		mockCollector := s.createMockCollector(tc.FixtureMapping, tc.FixtureFolder)
+
+		// Replace the scraper's collector with our mock
+		if baseScraper, ok := s.Scraper.(interface{ SetCollector(*colly.Collector) }); ok {
+			baseScraper.SetCollector(mockCollector)
+		} else {
+			t.Fatal("Scraper doesn't implement SetCollector method")
+		}
+
+		// Run the scraper
+		got, err := s.Scraper.Scrape(context.Background())
+
+		// Check error expectation
+		if (err != nil) != tc.ExpectError {
+			t.Errorf("Scrape() error = %v, expectError %v", err, tc.ExpectError)
+			return
+		}
+
+		if !tc.ExpectError {
+			// Load expected results
+			want := s.loadExpectedListings(tc.ExpectedFile)
+			s.compareResults(t, got, want)
+		}
+	})
+}
+
+// createMockCollector creates a collector that uses local test files
+func (s *ScraperTestSuite) createMockCollector(fixtureMapping map[string]string, fixturePath string) *colly.Collector {
+	c := colly.NewCollector()
+	c.WithTransport(&mockTransport{
+		t:              s.T,
+		fixtureMapping: fixtureMapping,
+		basePath:       filepath.Join(s.TestData, fixturePath),
+	})
+	return c
+}
+
+// loadExpectedListings loads expected listings from a JSON file
+func (s *ScraperTestSuite) loadExpectedListings(filename string) []models.Listing {
+	path := filepath.Join(s.TestData, filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		s.T.Fatalf("Failed to read expected listings file: %v", err)
+	}
+
+	var listings []models.Listing
+	if err := json.Unmarshal(data, &listings); err != nil {
+		s.T.Fatalf("Failed to unmarshal expected listings: %v", err)
+	}
+
+	return listings
+}
+
+// compareResults compares scraped listings with expected listings
+func (s *ScraperTestSuite) compareResults(t *testing.T, got, want []models.Listing) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Errorf("Got %d listings, want %d", len(got), len(want))
+		return
+	}
+
+	for i := range got {
+		s.compareListings(t, got[i], want[i])
+	}
+}
+
+// compareListings compares two listings for equality
+func (s *ScraperTestSuite) compareListings(t *testing.T, got, want models.Listing) {
+	t.Helper()
+
+	gotJSON, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("Failed to marshal got listing: %v", err)
+	}
+
+	wantJSON, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("Failed to marshal want listing: %v", err)
+	}
+
+	if string(gotJSON) != string(wantJSON) {
+		t.Errorf("Listings don't match:\ngot:  %s\nwant: %s", gotJSON, wantJSON)
+	}
+}
+
+
+// File: internal/utils/logger.go
+
+// internal/utils/logger.go
+
+package utils
+
+import (
+	"fmt"
+	"os"
+	"runtime"
+	"strings"
+	"time"
+)
+
+// Log prints a standard log message with optional formatting
+func Log(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel(message, "", 2)
+}
+
+// Error logs a message with ERROR level and optional formatting
+func Error(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel(message, "ERROR", 2)
+}
+
+// Debug logs a message with DEBUG level and optional formatting
+func Debug(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel(message, "DEBUG", 2)
+}
+
+// Fatal logs a message and terminates the program
+func Fatal(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel(message, "FATAL", 2)
+	os.Exit(1)
+}
+
+func logWithOptionalLevel(message string, level string, skip int) {
+	// Get the caller's function name
+	pc, _, _, ok := runtime.Caller(skip)
+	functionName := "unknown"
+	if ok {
+		fn := runtime.FuncForPC(pc)
+		if fn != nil {
+			// Get full function name
+			fullName := fn.Name()
+			// Split by "/" and get the last two parts (package.function)
+			parts := strings.Split(fullName, "/")
+			functionName = parts[len(parts)-1]
+		}
+	}
+
+	// Format timestamp
+	timestamp := time.Now().Format("15:04:05")
+
+	if level != "" {
+		fmt.Printf("[%s %s %s] [%s] %s\n", level, functionName, timestamp, message)
+	} else {
+		fmt.Printf("[%s %s] %s\n", functionName, timestamp, message)
+	}
+}
+
+
