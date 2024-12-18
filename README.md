@@ -47,6 +47,52 @@ The pipeline processes scraped listings through several steps:
 A pipeline accepts an array of listings, and will return an array of listings.
 The final pipeline `upload.go` will upload / update the listings passed to it.
 
+### Unblocker (`internal/unblocker`)
+The Unblocker service is an anti-detection and request management system.
+1. **BrightData Proxy Integration**: Uses a proxy service to automatically rotate through IP addresses
+    ```go
+    type BrightDataConfig struct {
+        CustomerID  string   // Your BrightData customer ID (e.g. hl_29d8sj2d)
+        ZoneName    string   // Your BrightData zone name (e.g. datacenter_proxy1)
+        Password    string   // Your BrightData password
+        Country     string   // Optional: Target country (e.g., "us", "uk")
+        State       string   // Optional: US state code (only when Country="us")
+        City        string   // Optional: Target city
+        UseLocalDNS bool     // Whether to use local DNS resolution
+    }
+    ```
+2. **Browser Profile Management**: Consistent and realistic browser fingerprinting
+```go
+type BrowserConfig struct {
+    Profiles          []BrowserProfile  // List of browser profiles to rotate
+    RotationStrategy  string           // Strategy for profile rotation
+    RotationInterval  time.Duration    // How often to rotate profiles
+}
+```
+3. **Rate Limiting**: Configurable request pacing and burst control
+```go
+type RateLimitConfig struct {
+    RequestsPerMinute int           // Maximum requests per minute
+    BurstSize        int           // Maximum burst size for requests
+    BaseDelay        time.Duration // Minimum delay between requests
+    MaxJitter        time.Duration // Random delay addition (0 to MaxJitter)
+}
+```
+4. **Cookie Management**: Domain-specific cookie handling
+```go
+type CookieConfig struct {
+    PersistCookies bool                    // Whether to maintain cookies between sessions
+    DomainRules    map[string]CookieRule   // Domain-specific cookie handling rules
+}
+```
+5. **Header Management**: Request header customization and rotation, including setting fake referral sites
+```go
+type HeaderConfig struct {
+    ReferralSites []string            // List of referrer URLs to rotate
+    CustomHeaders map[string]string   // Custom headers to include
+}
+```
+
 ## Testing
 
 ### Scraper Tests

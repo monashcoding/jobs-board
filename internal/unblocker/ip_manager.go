@@ -13,17 +13,6 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
-// BrightDataConfig holds the configuration for Bright Data proxies
-type BrightDataConfig struct {
-	CustomerID  string
-	ZoneName    string
-	Password    string
-	Country     string // Optional country code (e.g., "us", "uk")
-	State       string // Optional US state code
-	City        string // Optional city name
-	UseLocalDNS bool   // Whether to use local DNS resolution
-}
-
 type ipManager struct {
 	config        *BrightDataConfig
 	activeSession string

@@ -11,13 +11,6 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
-type RateLimitConfig struct {
-	RequestsPerMinute int
-	BurstSize         int
-	BaseDelay         time.Duration
-	MaxJitter         time.Duration
-}
-
 type domainStats struct {
 	lastRequest time.Time
 	requests    int
