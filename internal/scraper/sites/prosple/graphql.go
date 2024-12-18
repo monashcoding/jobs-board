@@ -2,8 +2,10 @@ package prosple
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"io"
 	"net/http"
 
@@ -69,7 +71,7 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-func SendGraphQLQuery(url string, query string, variables map[string]interface{}) (*GraphQLResponse, error) {
+func SendGraphQLQuery(url string, query string, variables map[string]interface{}, unblocker unblocker.Service) (*GraphQLResponse, error) {
 	requestBody := GraphQLRequest{
 		Query:     query,
 		Variables: variables,
@@ -91,8 +93,8 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// Use unblocker instead of http.Client
+	resp, err := unblocker.MakeRequest(context.Background(), req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %v", err)
 	}
