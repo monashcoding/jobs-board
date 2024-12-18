@@ -1,0 +1,1123 @@
+// File: internal/scraper/scraper.go
+package scraper
+
+import (
+	"context"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+
+	"github.com/gocolly/colly/v2"
+)
+
+// Scraper interface defines methods that each site scraper must implement
+type Scraper interface {
+	Name() string
+	URL() string // Each scraper defines its own URLs
+	Scrape(ctx context.Context) ([]models.Listing, error)
+}
+
+// CollyScraper provides common functionality for all scrapers
+type CollyScraper struct {
+	collector *colly.Collector
+}
+
+// NewCollyScraper creates a new base scraper with configured Colly collector
+func NewCollyScraper() *CollyScraper {
+	c := colly.NewCollector(
+		colly.UserAgent("MPLOY"),
+		colly.MaxDepth(2),
+		colly.Async(true),
+	)
+
+	// Set up rate limiting
+	c.Limit(&colly.LimitRule{
+		DomainGlob:  "*",
+		RandomDelay: 5 * time.Second,
+		Parallelism: 2,
+	})
+
+	return &CollyScraper{
+		collector: c,
+	}
+}
+
+// SetCollector allows replacing the collector for testing
+// func (s *BaseScraper) SetCollector(c *colly.Collector) {
+// 	s.collector = c
+// }
+
+// // GetCollector returns the current collector
+// func (s *BaseScraper) GetCollector() *colly.Collector {
+// 	return s.collector
+// }
+
+// File: internal/scraper/sites/gradcon.go
+package sites
+
+import (
+	"context"
+	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
+	"os"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+type GradconScraper struct {
+	*scraper.CollyScraper
+	unblocker unblocker.Service
+}
+
+func NewGradconScraper() *GradconScraper {
+	// Configure unblocker
+	config := unblocker.Config{
+		Features: unblocker.Features{
+			UseRateLimiting:    true,
+			UseIPRotation:      true,
+			UseBrowserProfiles: true,
+		},
+		BrightData: &unblocker.BrightDataConfig{
+			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
+			ZoneName:    os.Getenv("BRIGHTDATA_ZONE_NAME"),
+			Password:    os.Getenv("BRIGHTDATA_PASSWORD"),
+			Country:     "au",
+			UseLocalDNS: true,
+		},
+		Rate: &unblocker.RateLimitConfig{
+			RequestsPerMinute: 30,
+			BaseDelay:         time.Second * 2,
+			MaxJitter:         time.Second,
+		},
+	}
+
+	unblockerService, err := unblocker.NewService(config)
+	if err != nil {
+		utils.Error("Failed to initialize unblocker: %v", err)
+		return nil
+	}
+
+	return &GradconScraper{
+		unblocker:    unblockerService,
+		CollyScraper: scraper.NewCollyScraper(),
+	}
+}
+
+func (s *GradconScraper) Name() string {
+	return "GradConnections"
+}
+
+func (s *GradconScraper) URL() string {
+	return "https://au.gradconnection.com"
+}
+
+func (s *GradconScraper) API_URL() string {
+	return "https://au.gradconnection.com/api/campaignsearch"
+}
+
+func (s* GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Listing, error) {
+	gradConnectApiUrl := s.API_URL()
+	var listings []models.Listing
+
+	result, err := gradcon.SendAPIRequest(gradConnectApiUrl, pageSize, offset, s.unblocker)
+
+	if err != nil {
+		utils.Error("Failed to send API Request")
+	}
+
+	for _, item := range *result {
+		gradConnectListings, err := gradcon.GradConnectToMPLOY(item, s.URL())
+
+		if err != nil {
+			fmt.Printf("Error converting opportunity to model: %v\n", err)
+			continue
+		}
+		listings = append(listings, gradConnectListings...)
+	}
+
+	return listings, nil
+}
+
+func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	pages := 2 // Number of pages to scrape
+	pageSize := 50 // Number of listings per page
+
+	listings := []models.Listing{}
+	
+	// Scrape all listings
+	scrapeAll := false
+	if scrapeAll {
+		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
+		for i := 0; ; i++ {
+			utils.Log("Fully Scraping GradConnect: Page %d", i + 1)
+
+			newListings, err := s.PerformAPIScrape(i * pageSize, pageSize)
+
+			if (err != nil) {
+				return nil, fmt.Errorf("failed to scrape GradConnect: %v", err)
+			}
+
+			if len(newListings) != pageSize {
+				// End of results
+				listings = append(listings, newListings...)
+				break;
+			}
+
+			listings = append(listings, newListings...)
+		}
+		
+		return listings, nil
+	}
+
+	for i := 0; i < pages; i++ {
+		utils.Log("Scraping GradConnect: Page %d of %d...", i + 1, pages)
+
+		newListings, err := s.PerformAPIScrape(i * pageSize, pageSize)
+
+		if (err != nil ){
+			return nil, fmt.Errorf("failed to scrape GradConnect: %v", err)
+		}
+
+		listings = append(listings, newListings...)
+	}
+
+	return listings, nil
+}
+
+// File: internal/scraper/sites/gradcon/api.go
+package gradcon
+
+import (
+	"context"
+	"encoding/json"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
+	"io"
+	"log"
+	"net/http"
+	"strconv"
+
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+type APIResponse = []GradConnectData
+
+type GradConnectData struct {
+	Campaigns []GradConnectCampaign `json:"campaigns"`
+	CustomerOrganisation GradConnectCustomerOrganisation `json:"customer_organization"`
+	EarliestClosingDate string `json:"earliest_closing_date"`
+}
+
+type GradConnectCampaign struct {
+	Id string `json:"id"`
+	Title string `json:"title"`
+	Slug string `json:"slug"`
+	Description string `json:"description"`
+	JobType string `json:"job_type"`	
+	TargetURL string `json:"target_url"`
+	Interval struct {
+		Start string `json:"start"`
+		End string `json:"end"`
+	} `json:"interval"`
+	Disciplines []string `json:"disciplines"`
+	Locations []string `json:"locations"`
+	WorkRights []string `json:"work_rights"`
+	OriginTargetURL string `json:"origin_target_url"`
+	AdditionalFields []GradConnectAdditionalField `json:"additional_fields"`
+}
+
+type GradConnectAdditionalField struct {
+	Type  string      `json:"type"`
+	Value interface{} `json:"value"`
+}
+
+type GradConnectCustomerOrganisation struct {
+	Id string `json:"id"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+func SendAPIRequest(url string, limit int, offset int, unblocker unblocker.Service) (*APIResponse, error) {
+	params := "?disciplines=computer-science&limit=20&limit=" + strconv.Itoa(limit) + "&offset=" + strconv.Itoa(offset) + "&recommended=true"
+	apiUrl := url + params
+
+	// Create a new request
+	req, err := http.NewRequest("GET", apiUrl, nil)
+
+	if err != nil {
+		log.Fatal("Error creating request:", err)
+	}
+
+	// Send the request
+	resp, err := unblocker.MakeRequest(context.Background(), req)
+	if err != nil {
+		log.Fatal("Error making request:", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal("Error reading response:", err)
+	}
+
+	utils.Log("API response successfully received [\u2713]")
+
+	var result APIResponse 
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		log.Fatal("Error unmarshalling response:", err)
+	}
+
+	utils.Log("Reponse body successfully parsed [\u2713]")
+
+	return &result, nil
+}
+// File: internal/scraper/sites/gradcon/converter.go
+package gradcon
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+)
+
+func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listing, error) {
+	campaigns := gradConnect.Campaigns
+	listings := []models.Listing{}
+
+	if len(campaigns) > 0 {
+		for _, campaign := range campaigns {
+			
+			locations, err := GradConLocationsToMPLOYLocationTypes(campaign)
+			if err != nil {
+				return nil, fmt.Errorf("error getting locations: %v", err)
+			}
+			
+			studyFields, err := GradConStudyFieldsToMPLOYStudyFields(campaign)
+			if err != nil {
+				return nil, fmt.Errorf("error getting study fields: %v", err)
+			}
+
+			jobType, err := GradConJobTypeToMPLOYJobType(campaign)
+			
+			closeDate := GetGradConCloseDate(campaign)
+			startDate := GetGradConStartDate(campaign)
+		
+			workingRights, err := GradConWorkRightsToMPLOYWorkingRights(campaign)
+			if err != nil {
+				return nil, fmt.Errorf("error getting working rights: %v", err)
+			}
+
+			employerUrl := url + "/employers/" + gradConnect.CustomerOrganisation.Slug
+			jobUrl := employerUrl + "/jobs/" + campaign.Slug
+
+			listing := models.Listing{
+				Title: campaign.Title,
+				Description: campaign.Description,
+				Company: models.Company{
+					Name: gradConnect.CustomerOrganisation.Name,
+					Website: employerUrl,
+				},
+				ApplicationURL: campaign.OriginTargetURL,
+				SourceURLs:[]string{jobUrl},
+				Type: jobType,
+				CloseDate: &closeDate,
+				Locations: locations,
+				StudyFields: studyFields,
+				StartDate: startDate,
+				WorkingRights: workingRights,
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			}
+
+			listings = append(listings, listing)
+		}
+	}
+
+	return listings, nil
+}
+
+
+func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]models.LocationType, error) {
+	// TODO:: Extend this to match location type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
+	
+	locations := []models.LocationType{}
+	for _, location := range campaign.Locations {
+		locations = append(locations, models.LocationType(location))
+	}
+
+	return locations, nil
+}
+
+func GradConStudyFieldsToMPLOYStudyFields(campaign GradConnectCampaign) ([]models.StudyField, error) {
+	studyFields := []models.StudyField{}
+	for _, discipline := range campaign.Disciplines {
+		studyFields = append(studyFields, models.StudyField(discipline))
+	}
+	return studyFields, nil
+}
+
+func GetGradConStartDate(campaign GradConnectCampaign) (time.Time) {
+	defaultDate := time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
+	for _, field := range campaign.AdditionalFields {
+		if (field.Type == "start_date") {
+			
+			valueStr, ok := field.Value.(string)
+			if !ok {
+				fmt.Printf("warn: error parsing start date: value is not a string, defaulting to 1970-01-01T00:00:00Z\n")
+				return defaultDate
+			}
+
+			startDate, err := time.Parse("2006-01-02", valueStr)
+
+			if err != nil {
+				fmt.Printf("warn: error parsing start date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+
+				return defaultDate
+			} else {
+				return startDate
+			} 
+		}
+	}
+
+	fmt.Printf("warn: error parsing start date: No start date provided, defaulting to 1970-01-01T00:00:00Z\n")
+	return defaultDate
+}
+
+func GetGradConCloseDate(campaign GradConnectCampaign) (time.Time) {
+	defaultDate := time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
+	endDate := campaign.Interval.End
+
+	parsedEndDate, err := time.Parse(time.RFC3339, endDate)
+		
+	if err != nil {
+		fmt.Printf("warn: error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+
+		return defaultDate
+	} else {
+		return parsedEndDate
+	}
+}
+
+func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]models.WorkingRight, error){
+	// TODO:: Extend this to match working right type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
+
+	workingRights := []models.WorkingRight{}
+	for _, workRight := range campaign.WorkRights {
+		workingRights = append(workingRights, models.WorkingRight(workRight))
+	}
+	return workingRights, nil
+}
+
+func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType, error){
+	// TODO:: Extend this to match working right type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
+
+	return models.JobType(campaign.JobType), nil
+}
+// File: internal/scraper/sites/gradcon_test.go
+package sites
+
+import (
+	scrapertesting "github.com/monashcoding/mploy-golang-core/internal/scraper/testing"
+	"testing"
+)
+
+func TestGradconScraper_Scrape(t *testing.T) {
+	scraper := NewGradconScraper()
+	suite := scrapertesting.NewScraperTestSuite(t, scraper, "testdata/gradcon")
+
+	testCases := []scrapertesting.TestCase{
+		{
+			Name:          "successful_scrape",
+			FixtureFolder: "success",
+			ExpectedFile:  "success/expected.json",
+			FixtureMapping: map[string]string{
+				"https://au.gradconnection.com/": "success/main_page.html",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.RunTestCase(tc)
+	}
+}
+
+// File: internal/scraper/sites/linkedin.go
+package sites
+
+import (
+	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+)
+
+type LinkedinScraper struct {
+	*scraper.CollyScraper
+}
+
+func NewLinkedinScraper() *LinkedinScraper {
+	return &LinkedinScraper{
+		CollyScraper: scraper.NewCollyScraper(),
+	}
+}
+
+func (s *LinkedinScraper) Name() string {
+	return "Linkedin"
+}
+
+func (s *LinkedinScraper) URL() string {
+	return "https://www.linkedin.com/jobs/"
+}
+
+func (s *LinkedinScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	return nil, nil
+}
+
+// File: internal/scraper/sites/prosple.go
+package sites
+
+import (
+	"context"
+	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
+	"os"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+type ProspleScraper struct {
+	unblocker unblocker.Service
+}
+
+func NewProspleScraper() *ProspleScraper {
+	// Configure unblocker
+	config := unblocker.Config{
+		Features: unblocker.Features{
+			UseRateLimiting:    true,
+			UseIPRotation:      true,
+			UseBrowserProfiles: true,
+		},
+		BrightData: &unblocker.BrightDataConfig{
+			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
+			ZoneName:    os.Getenv("BRIGHTDATA_ZONE_NAME"),
+			Password:    os.Getenv("BRIGHTDATA_PASSWORD"),
+			Country:     "au",
+			UseLocalDNS: true,
+		},
+		Rate: &unblocker.RateLimitConfig{
+			RequestsPerMinute: 30,
+			BaseDelay:         time.Second * 2,
+			MaxJitter:         time.Second,
+		},
+	}
+
+	unblockerService, err := unblocker.NewService(config)
+	if err != nil {
+		utils.Error("Failed to initialize unblocker: %v", err)
+		return nil
+	}
+
+	return &ProspleScraper{
+		unblocker: unblockerService,
+	}
+}
+
+func (s *ProspleScraper) Name() string {
+	return "Prosple"
+}
+
+func (s *ProspleScraper) URL() string {
+	return "https://au.prosple.com"
+}
+
+func (s *ProspleScraper) API_URL() string {
+	return "https://prosple-gw.global.ssl.fastly.net/internal"
+}
+
+func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int) ([]models.Listing, error)  {
+	prospleApiUrl := s.API_URL()
+	var listings []models.Listing
+
+	query := prosple.GetGraphQlQuery()
+	variables := prosple.GetGraphQlVariables(offset, pageSize)
+
+	response, err := prosple.SendGraphQLQuery(prospleApiUrl, query, variables, s.unblocker)
+
+	if err != nil {
+		return nil, fmt.Errorf("GraphQL query failed: %v", err)
+	}
+
+	for _, opp := range response.Data.OpportunitiesSearch.Opportunities {
+		listing, err := prosple.OpportunityToModel(s.URL(), opp)
+		if err != nil {
+			fmt.Printf("Error converting opportunity to model: %v\n", err)
+			continue
+		}
+		listings = append(listings, *listing)
+	}
+
+	return listings, nil
+}
+
+func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
+	var listings []models.Listing
+	pages := 2 // Number of pages to scrape
+	pageSize := 50 // Number of listings per page
+
+	// Scrape all listings
+	scrapeAll := false
+	if scrapeAll {
+		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
+		for i := 0; ; i++ {
+			utils.Log("Fully Scraping Prosple: Page %d", i + 1)
+
+			newListings, err := s.PerformGraphQLScrape( i * pageSize, pageSize)
+
+			if (err != nil) {
+				return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
+			}
+
+			if len(newListings) != pageSize {
+				// End of results
+				listings = append(listings, newListings...)
+				break;
+			}
+
+			listings = append(listings, newListings...)
+		}
+		
+		return listings, nil
+	}
+
+
+	// Scrape a fixed number of pages
+	for i := 0; i < pages; i++ {		
+		utils.Log("Scraping Prosple: Page %d of %d...", i + 1, pages)
+
+		newListings, err := s.PerformGraphQLScrape(i * pageSize, pageSize)
+
+		if (err != nil) {
+			return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
+		}
+
+		listings = append(listings, newListings...)
+	}
+
+	return listings, nil
+}
+
+// File: internal/scraper/sites/prosple/converter.go
+package prosple
+
+import (
+	"fmt"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+)
+
+func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listing, error) {
+	sourceUrl := baseURL + opportunity.DetailPageURl
+
+	company := models.Company{
+		Name:    opportunity.ParentEmployer.Title,
+		Website: baseURL + opportunity.ParentEmployer.DetailPageUrl,
+	}
+
+	jobType, err:= ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label) // TO BE IMPLEMENTED IN TICKET (MAC-63) 
+
+	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
+	if err != nil {
+		fmt.Printf("warn: error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+		parsedCloseDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
+	}
+
+	locations, err := ProspleLocationsToMPLOYLocationTypes(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting locations: %v", err)
+	}
+
+	studyfield, err := ProspleStudyFieldsToMPLOYStudyFields(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting study fields: %v", err)
+	}
+
+	var parsedStartDate time.Time
+	if opportunity.StartDate.Category != nil {
+		parsedStartDate, err = time.Parse("2006-01-02T15:04:05.000Z", opportunity.StartDate.Category.Label)
+		if err != nil {
+			fmt.Printf("warn: error parsing start date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+			parsedStartDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
+		}
+	} else {
+		parsedStartDate = time.Now()
+	}
+
+	workingRights, err := ProspleWorkingRightsToMPLOYWorkingRights(opportunity)
+	if err != nil {
+		return nil, fmt.Errorf("error getting working rights: %v", err)
+	}
+
+	return &models.Listing{
+		Title:          opportunity.Title,
+		Description:    opportunity.Overview.FullText,
+		Company:        company,
+		ApplicationURL: opportunity.ApplyByUrl,
+		SourceURLs:     []string{sourceUrl},
+		Type:           jobType,
+		CloseDate:      &parsedCloseDate,
+		Locations:      locations,
+		StudyFields:    studyfield,
+		StartDate:      parsedStartDate,
+		WorkingRights:  workingRights,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}, nil
+}
+
+func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.LocationType, error) {
+	// TODO:: Extend this to match location type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+
+	locations := []models.LocationType{}
+	for _, location := range opportunity.PhysicalLocations {
+		locations = append(locations, models.LocationType(location.Label))
+
+		for _, childLocation := range location.Children {
+			locations = append(locations, models.LocationType(childLocation.Label))
+		}
+	}
+	return locations, nil
+}
+
+func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]models.StudyField, error) {
+	studyFields := []models.StudyField{}
+	for _, field := range opportunity.StudyFields {
+		studyFields = append(studyFields, models.StudyField(field.Label))
+	}
+	return studyFields, nil
+}
+
+func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models.WorkingRight, error) {
+	// TODO:: Extend this to match working right type names to our Enum
+	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+
+	workingRights := []models.WorkingRight{}
+	for _, workingRight := range opportunity.WorkingRights {
+		workingRights = append(workingRights, models.WorkingRight(workingRight.Label))
+
+		for _, child := range workingRight.Children {
+			workingRights = append(workingRights, models.WorkingRight(child.Label))
+		}
+	}
+	return workingRights, nil
+}
+
+func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error){
+	// Standardise the Prosple Job type to our Job type enums
+	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+
+
+	return models.JobType(jobtype), nil
+}
+
+
+// File: internal/scraper/sites/prosple/converter_tests.go
+package prosple
+
+import (
+	"testing"
+)
+
+func Test(t *testing.T) {
+	
+}
+
+// File: internal/scraper/sites/prosple/graphql.go
+package prosple
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
+	"io"
+	"net/http"
+
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+type GraphQLRequest struct {
+	Query     string                 `json:"query"`
+	Variables map[string]interface{} `json:"variables"`
+}
+
+type GraphQLResponse struct {
+	Data   ResponseData `json:"data"`
+	Errors []Error      `json:"errors,omitempty"`
+}
+
+type ResponseData struct {
+	OpportunitiesSearch SearchResult `json:"opportunitiesSearch"`
+}
+
+type SearchResult struct {
+	Opportunities []Opportunity `json:"opportunities"`
+}
+
+type Opportunity struct {
+	Title         string `json:"title"`
+	DetailPageURl string `json:"detailPageUrl"`
+	Overview      struct {
+		FullText string `json:"fullText"`
+	} `json:"overview"`
+	ParentEmployer struct {
+		Title         string `json:"title"`
+		DetailPageUrl string `json:"detailPageUrl"`
+	} `json:"parentEmployer"`
+	ApplyByUrl            string `json:"applyByUrl"`
+	ApplicationsCloseDate string `json:"applicationsCloseDate"`
+	OpportunityTypes      []struct {
+		Label string `json:"label"`
+	} `json:"opportunityTypes"`
+	StartDate struct {
+		Category *struct {
+			Label string `json:"label"`
+		} `json:"category"`
+	} `json:"startDate"`
+	PhysicalLocations []struct {
+		Label    string `json:"label"`
+		Children []struct {
+			Label string `json:"label"`
+		} `json:"children"`
+	} `json:"physicalLocations"`
+	StudyFields []struct {
+		Label string `json:"label"`
+	} `json:"studyFields"`
+	WorkingRights []struct {
+		Label    string `json:"label"`
+		Children []struct {
+			Label string `json:"label"`
+		} `json:"children"`
+	} `json:"workingRights"`
+}
+
+type Error struct {
+	Message string `json:"message"`
+}
+
+func SendGraphQLQuery(url string, query string, variables map[string]interface{}, unblocker unblocker.Service) (*GraphQLResponse, error) {
+	requestBody := GraphQLRequest{
+		Query:     query,
+		Variables: variables,
+	}
+
+	utils.Log("Sending GraphQL request [...]")
+
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		utils.Log("Failed to marshal request body: %v", err)
+		return nil, fmt.Errorf("failed to marshal request body: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		utils.Log("Failed to create request: %v", err)
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Use unblocker instead of http.Client
+	resp, err := unblocker.MakeRequest(context.Background(), req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP error: %s, %v", resp.Status, string(body))
+	}
+
+	utils.Log("GraphQL response successfully received [\u2713]")
+
+	var graphqlResp GraphQLResponse
+	if err := json.Unmarshal(body, &graphqlResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
+	}
+
+	if len(graphqlResp.Errors) > 0 {
+		return nil, fmt.Errorf("GraphQL error: %v", graphqlResp.Errors)
+	}
+
+	utils.Log("Reponse body successfully parsed [\u2713]")
+
+	return &graphqlResp, nil
+}
+
+func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
+	return map[string]interface{}{
+		"parameters": map[string]interface{}{
+			"gid": "6",
+			"range": map[string]interface{}{
+				"offset": offset,
+				"limit":  limit,
+			},
+			"sortBy": map[string]interface{}{
+				"criteria":  "NEWEST_OPPORTUNITIES", // NEWEST_OPPORTUNITIES, POPULARITY, CLOSING_DATE
+				"direction": "DESC",
+			},
+			"subscriptionTierEpicVariation": "THIRD_VARIATION",
+			"keywords":                      "",
+			"experiments": map[string]interface{}{
+				"bidKeyword": map[string]interface{}{
+					"enabled": false,
+				},
+				"sortByBidPopularityKeyword": "SECOND_VARIATION",
+			},
+			"selectedStartDateRangeFacet": nil,
+			"selectedLocationFacets": []map[string]interface{}{
+				{
+					"id":          "9692", // 9692 = Australia
+					"childFacets": []interface{}{},
+				},
+			},
+			"selectedStudyFieldFacets": []map[string]interface{}{
+				{
+					"id": "502", // 502 = IT & Computer Science
+				},
+			},
+			"selectedWorkRightsType": []map[string]interface{}{
+				{ "id": "29059" }, // 29059 = Australian Citizen
+				{ "id": "29060" }, // 29060 = Australian Permanent Resident
+				{ "id": "29061" }, // 29061 = International Student/Graduate Visa
+				{ "id": "29062" }, // 29062 = Australian Work Visa (All Other)
+				{ "id": "29063" }, // 29063 = Visa Sponsorship Included
+			},
+		},
+	}
+}
+
+func GetGraphQlQuery() string {
+	return `query OpportunitiesSearch($parameters: OpportunitiesSearchInput!) {
+  opportunitiesSearch(parameters: $parameters) {
+    opportunities {
+      id
+      title
+      applyByUrl
+      overview {
+        fullText
+      }
+      opportunityTypes {
+        label
+      }
+      applicationsCloseDate
+      locationDescription
+      studyFields{
+        label
+      }
+      physicalLocations{
+        label
+        children{
+          label
+        }
+      }
+      parentEmployer{
+        title
+      }
+      workingRights{
+        children{
+          label
+        }
+      }
+      }
+    }
+  }`
+}
+
+
+
+// File: internal/scraper/sites/testdata/gradcon/success/expected.json
+
+// File: internal/scraper/sites/testdata/gradcon/success/main_page.html
+
+// File: internal/scraper/testing/suite.go
+package testing
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"github.com/gocolly/colly/v2"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// TestCase represents a single test scenario for a scraper
+type TestCase struct {
+	Name           string
+	FixtureFolder  string
+	ExpectedFile   string // JSON file containing expected listings
+	ExpectError    bool
+	FixtureMapping map[string]string // Maps URLs to fixture files
+}
+
+// ScraperTestSuite provides common testing functionality for scrapers
+type ScraperTestSuite struct {
+	T        *testing.T
+	Scraper  scraper.Scraper
+	TestData string // Base path for test data
+}
+
+// mockTransport implements http.RoundTripper for serving local test files
+type mockTransport struct {
+	t              *testing.T
+	fixtureMapping map[string]string
+	basePath       string
+}
+
+func (m *mockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Get the fixture file for this URL
+	fixtureFile, exists := m.fixtureMapping[req.URL.String()]
+	if !exists {
+		m.t.Fatalf("No fixture mapping found for URL: %s", req.URL.String())
+	}
+
+	// Load the fixture
+	filename := filepath.Join(m.basePath, fixtureFile)
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		m.t.Fatalf("Failed to read test fixture %s: %v", filename, err)
+	}
+
+	// Create mock response
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader(content)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+// NewScraperTestSuite creates a new test suite for a scraper
+func NewScraperTestSuite(t *testing.T, scraper scraper.Scraper, testDataPath string) *ScraperTestSuite {
+	return &ScraperTestSuite{
+		T:        t,
+		Scraper:  scraper,
+		TestData: testDataPath,
+	}
+}
+
+// RunTestCase executes a single test case
+func (s *ScraperTestSuite) RunTestCase(tc TestCase) {
+	s.T.Helper()
+	s.T.Run(tc.Name, func(t *testing.T) {
+		// Create a new collector with mocked transport
+		mockCollector := s.createMockCollector(tc.FixtureMapping, tc.FixtureFolder)
+
+		// Replace the scraper's collector with our mock
+		if baseScraper, ok := s.Scraper.(interface{ SetCollector(*colly.Collector) }); ok {
+			baseScraper.SetCollector(mockCollector)
+		} else {
+			t.Fatal("Scraper doesn't implement SetCollector method")
+		}
+
+		// Run the scraper
+		got, err := s.Scraper.Scrape(context.Background())
+
+		// Check error expectation
+		if (err != nil) != tc.ExpectError {
+			t.Errorf("Scrape() error = %v, expectError %v", err, tc.ExpectError)
+			return
+		}
+
+		if !tc.ExpectError {
+			// Load expected results
+			want := s.loadExpectedListings(tc.ExpectedFile)
+			s.compareResults(t, got, want)
+		}
+	})
+}
+
+// createMockCollector creates a collector that uses local test files
+func (s *ScraperTestSuite) createMockCollector(fixtureMapping map[string]string, fixturePath string) *colly.Collector {
+	c := colly.NewCollector()
+	c.WithTransport(&mockTransport{
+		t:              s.T,
+		fixtureMapping: fixtureMapping,
+		basePath:       filepath.Join(s.TestData, fixturePath),
+	})
+	return c
+}
+
+// loadExpectedListings loads expected listings from a JSON file
+func (s *ScraperTestSuite) loadExpectedListings(filename string) []models.Listing {
+	path := filepath.Join(s.TestData, filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		s.T.Fatalf("Failed to read expected listings file: %v", err)
+	}
+
+	var listings []models.Listing
+	if err := json.Unmarshal(data, &listings); err != nil {
+		s.T.Fatalf("Failed to unmarshal expected listings: %v", err)
+	}
+
+	return listings
+}
+
+// compareResults compares scraped listings with expected listings
+func (s *ScraperTestSuite) compareResults(t *testing.T, got, want []models.Listing) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Errorf("Got %d listings, want %d", len(got), len(want))
+		return
+	}
+
+	for i := range got {
+		s.compareListings(t, got[i], want[i])
+	}
+}
+
+// compareListings compares two listings for equality
+func (s *ScraperTestSuite) compareListings(t *testing.T, got, want models.Listing) {
+	t.Helper()
+
+	gotJSON, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("Failed to marshal got listing: %v", err)
+	}
+
+	wantJSON, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("Failed to marshal want listing: %v", err)
+	}
+
+	if string(gotJSON) != string(wantJSON) {
+		t.Errorf("Listings don't match:\ngot:  %s\nwant: %s", gotJSON, wantJSON)
+	}
+}
+
