@@ -3,16 +3,50 @@ package sites
 import (
 	"context"
 	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
+	"os"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
-type ProspleScraper struct{}
+type ProspleScraper struct {
+	unblocker unblocker.Service
+}
 
 func NewProspleScraper() *ProspleScraper {
-	return &ProspleScraper{}
+	// Configure unblocker
+	config := unblocker.Config{
+		Features: unblocker.Features{
+			UseRateLimiting:    true,
+			UseIPRotation:      true,
+			UseBrowserProfiles: true,
+		},
+		BrightData: &unblocker.BrightDataConfig{
+			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
+			ZoneName:    os.Getenv("BRIGHTDATA_ZONE_NAME"),
+			Password:    os.Getenv("BRIGHTDATA_PASSWORD"),
+			Country:     "au",
+			UseLocalDNS: true,
+		},
+		Rate: &unblocker.RateLimitConfig{
+			RequestsPerMinute: 30,
+			BaseDelay:         time.Second * 2,
+			MaxJitter:         time.Second,
+		},
+	}
+
+	unblockerService, err := unblocker.NewService(config)
+	if err != nil {
+		utils.Error("Failed to initialize unblocker: %v", err)
+		return nil
+	}
+
+	return &ProspleScraper{
+		unblocker: unblockerService,
+	}
 }
 
 func (s *ProspleScraper) Name() string {
@@ -34,7 +68,7 @@ func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int) ([]model
 	query := prosple.GetGraphQlQuery()
 	variables := prosple.GetGraphQlVariables(offset, pageSize)
 
-	response, err := prosple.SendGraphQLQuery(prospleApiUrl, query, variables)
+	response, err := prosple.SendGraphQLQuery(prospleApiUrl, query, variables, s.unblocker)
 
 	if err != nil {
 		return nil, fmt.Errorf("GraphQL query failed: %v", err)
