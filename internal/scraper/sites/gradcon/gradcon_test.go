@@ -1,4 +1,4 @@
-package sites
+package gradcon
 
 import (
 	scrapertesting "github.com/monashcoding/mploy-golang-core/internal/scraper/testing"
