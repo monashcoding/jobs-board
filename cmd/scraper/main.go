@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,7 +16,6 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/database"
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites"
 )
 
 func main() {
@@ -42,9 +44,9 @@ func main() {
 
 	// Initialize scrapers
 	scrapers := []scraper.Scraper{
-		sites.NewGradconScraper(),
-		sites.NewProspleScraper(),
-		//sites.NewLinkedinScraper(),
+		gradcon.NewGradconScraper(),
+		prosple.NewProspleScraper(),
+		linkedin.NewLinkedInScraper(),
 	}
 
 	// Initialize pipeline
@@ -79,6 +81,6 @@ func main() {
 	}
 
 	utils.Log("Pipeline section finished [\u2713]")
-	
+
 	utils.Log("Processing completed [\u2713]")
 }
