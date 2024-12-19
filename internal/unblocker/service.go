@@ -71,7 +71,6 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		}
 		profileID = profile.ID
 		req.Header.Set("User-Agent", profile.UserAgent)
-		// Add other profile headers...
 	}
 
 	// Apply cookies if enabled
@@ -86,6 +85,7 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 	}
 
 	// Configure proxy if enabled
+	var usingProxy bool
 	if s.ipManager != nil {
 		proxyURL, err := s.ipManager.GetProxy(ctx)
 		if err != nil {
@@ -103,6 +103,11 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		}
 
 		s.client.Transport = transport
+		usingProxy = true
+		utils.Log("Request will be made using proxy: %s", proxyUrlParsed.Host)
+	} else {
+		utils.Error("No proxy configured - request will be made with direct connection")
+		usingProxy = false
 	}
 
 	// Make the request
@@ -112,6 +117,11 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 			s.ipManager.ReportFailure(ctx, req.URL.String())
 		}
 		return nil, err
+	}
+
+	// Log proxy usage result
+	if usingProxy {
+		utils.Log("Request completed successfully through proxy")
 	}
 
 	// Report success and update state
@@ -133,6 +143,5 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		s.browserManager.ReleaseProfile(ctx, profileID)
 	}
 
-	utils.Log("Request completed successfully")
 	return resp, nil
 }

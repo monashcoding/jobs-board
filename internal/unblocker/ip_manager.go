@@ -82,11 +82,10 @@ func (m *ipManager) GetProxy(ctx context.Context) (string, error) {
 	if m.activeSession == "" || time.Now().After(m.sessionExpiry) {
 		m.activeSession = generateSessionID()
 		m.sessionExpiry = time.Now().Add(time.Minute * 10) // 10-minute sessions
-		utils.Log("Created new Bright Data session: %s", m.activeSession)
 	}
 
 	username := m.constructUsername(m.activeSession)
-	proxyURL := fmt.Sprintf("http://%s:%s@brd.superproxy.io:22225",
+	proxyURL := fmt.Sprintf("http://%s:%s@brd.superproxy.io:33335",
 		username,
 		m.config.Password)
 
