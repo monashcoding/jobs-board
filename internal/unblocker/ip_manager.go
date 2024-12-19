@@ -47,7 +47,9 @@ func generateSessionID() string {
 
 // constructUsername builds the Bright Data proxy username with all parameters
 func (m *ipManager) constructUsername(session string) string {
-	// Base username with required parameters
+	// Each unique session ID will get a unique IP, can be used to target the same IP repeatedly or force rotation.
+	// Setting a custom session ID helps rotate IPs.
+	// Reference: https://docs.brightdata.com/proxy-networks/config-options
 	username := fmt.Sprintf("brd-customer-%s-zone-%s-session-%s",
 		m.config.CustomerID,
 		m.config.ZoneName,
