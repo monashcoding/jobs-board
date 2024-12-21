@@ -25,6 +25,7 @@ var defaultIgnoredFiles = []string{
 
 var defaultIgnoredExtensions = []string{
 	".git",
+	".html",
 	".gitignore",
 	".idea",
 	"node_modules",

@@ -12,6 +12,7 @@ const (
 	FIRST_YEAR JobType = "FIRST_YEAR"
 	INTERN     JobType = "INTERN"
 	GRADUATE   JobType = "GRADUATE"
+	UNKNOWN    JobType = "UNKNOWN"
 )
 
 type StudyField string

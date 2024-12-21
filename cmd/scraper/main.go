@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 	"os"
 	"os/signal"
 	"syscall"
@@ -44,17 +42,18 @@ func main() {
 
 	// Initialize scrapers
 	scrapers := []scraper.Scraper{
-		gradcon.NewGradconScraper(),
-		prosple.NewProspleScraper(),
+		//gradcon.NewGradconScraper(),
+		//prosple.NewProspleScraper(),
 		linkedin.NewLinkedInScraper(),
 	}
 
 	// Initialize pipeline
 	processingPipeline := pipeline.NewPipeline(
 		steps.NewLogStep("Initial"),
+		steps.NewWriteJSONStep(),
 		//steps.NewNormalizationStep(),
 		//steps.NewDeduplicationStep(),
-		steps.NewMongoDBStep(mongodb),
+		//steps.NewMongoDBStep(mongodb),
 	)
 
 	// Collect all listings from scrapers
