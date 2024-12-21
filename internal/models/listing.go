@@ -12,6 +12,7 @@ const (
 	FIRST_YEAR JobType = "FIRST_YEAR"
 	INTERN     JobType = "INTERN"
 	GRADUATE   JobType = "GRADUATE"
+	OTHER JobType = "OTHER"
 )
 
 type StudyField string
@@ -31,19 +32,25 @@ const (
 	WA        LocationType = "WA"
 	NT        LocationType = "NT"
 	SA        LocationType = "SA"
+	ACT       LocationType = "ACT"
+	TAS       LocationType = "TAS"
 	HYBRID    LocationType = "HYBRID"
 	REMOTE    LocationType = "REMOTE"
 	AUSTRALIA LocationType = "AUSTRALIA"
+	OTHERS    LocationType = "OTHERS"
 )
 
 type WorkingRight string
 
 const (
-	AUS_CITIZEN   WorkingRight = "AUS_CITIZEN"
-	AUS_PR        WorkingRight = "AUS_PR"
-	NZ_CITIZEN    WorkingRight = "NZ_CITIZEN"
-	NZ_PR         WorkingRight = "NZ_PR"
-	INTERNATIONAL WorkingRight = "INTERNATIONAL"
+	AUS_CITIZEN    WorkingRight = "AUS_CITIZEN"
+	AUS_PR         WorkingRight = "AUS_PR"
+	NZ_CITIZEN     WorkingRight = "NZ_CITIZEN"
+	NZ_PR          WorkingRight = "NZ_PR"
+	INTERNATIONAL  WorkingRight = "INTERNATIONAL"
+	WORK_VISA	   WorkingRight = "WORK_VISA"
+	VISA_SPONSORED WorkingRight = "VISA_SPONSORED"
+	OTHER_RIGHTS   WorkingRight = "OTHER_RIGHTS"
 )
 
 type Company struct {
