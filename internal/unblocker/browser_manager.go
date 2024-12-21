@@ -102,7 +102,6 @@ func (m *browserManager) GetProfile(ctx context.Context) (*BrowserProfile, error
 	selectedProfile.LastUsed = time.Now()
 	m.activeProfiles[selectedProfile.ID] = selectedProfile
 
-	utils.Log("Assigned browser profile: %s", selectedProfile.ID)
 	return selectedProfile, nil
 }
 
@@ -111,6 +110,5 @@ func (m *browserManager) ReleaseProfile(ctx context.Context, profileID string) e
 	defer m.mu.Unlock()
 
 	delete(m.activeProfiles, profileID)
-	utils.Log("Released browser profile: %s", profileID)
 	return nil
 }

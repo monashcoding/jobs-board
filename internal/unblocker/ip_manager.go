@@ -91,13 +91,11 @@ func (m *ipManager) GetProxy(ctx context.Context) (string, error) {
 		username,
 		m.config.Password)
 
-	utils.Log("Using Bright Data proxy with session: %s", m.activeSession)
 	return proxyURL, nil
 }
 
 // ReportSuccess logs successful proxy usage
 func (m *ipManager) ReportSuccess(ctx context.Context, proxyURL string) error {
-	utils.Log("Successful request with session: %s", m.activeSession)
 	return nil
 }
 
