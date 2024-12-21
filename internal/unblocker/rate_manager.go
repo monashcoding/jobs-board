@@ -40,7 +40,7 @@ func newRateManager(config RateLimitConfig) RateLimitManager {
 	}
 }
 
-func (m *rateManager) Wait(ctx context.Context) error {
+func (m *rateManager) Wait(ctx context.Context) (time.Duration, error) {
 	delay := m.config.BaseDelay
 	if m.config.MaxJitter > 0 {
 		jitter := time.Duration(rand.Int63n(int64(m.config.MaxJitter)))
@@ -51,9 +51,9 @@ func (m *rateManager) Wait(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return delay, ctx.Err()
 	case <-time.After(delay):
-		return nil
+		return delay, nil
 	}
 }
 

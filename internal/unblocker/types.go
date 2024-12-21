@@ -101,7 +101,7 @@ type IPRotationManager interface {
 }
 
 type RateLimitManager interface {
-	Wait(ctx context.Context) error
+	Wait(ctx context.Context) (time.Duration, error)
 	ReportRequest(ctx context.Context, domain string) error
 }
 
