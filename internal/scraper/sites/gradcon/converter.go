@@ -50,7 +50,7 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 				CloseDate: &closeDate,
 				Locations: locations,
 				StudyFields: studyFields,
-				StartDate: startDate,
+				StartDate: &startDate,
 				WorkingRights: workingRights,
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),

@@ -62,7 +62,7 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	listings := []models.Listing{}
 	
 	// Scrape all listings
-	scrapeAll := false
+	scrapeAll := true
 	if scrapeAll {
 		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
 		for i := 0; ; i++ {

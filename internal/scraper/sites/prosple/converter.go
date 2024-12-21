@@ -59,7 +59,7 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		CloseDate:      &parsedCloseDate,
 		Locations:      locations,
 		StudyFields:    studyfield,
-		StartDate:      parsedStartDate,
+		StartDate:      &parsedStartDate,
 		WorkingRights:  workingRights,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
