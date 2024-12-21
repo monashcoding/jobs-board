@@ -17,24 +17,15 @@ func buildSearchURL(baseURL string, params map[string]string) string {
 }
 
 func extractJobID(href string) string {
-	// Split by "view/" to get the part after it
-	parts := strings.Split(href, "view/")
-	if len(parts) != 2 {
-		return ""
+	// Split off query parameters
+	base := strings.Split(href, "?")[0]
+
+	// Split by hyphen and take last element
+	parts := strings.Split(base, "-")
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
 	}
-
-	// Get everything up to the first "?" if it exists
-	idPart := strings.Split(parts[1], "?")[0]
-
-	// Clean up any remaining non-numeric characters
-	id := ""
-	for _, char := range idPart {
-		if char >= '0' && char <= '9' {
-			id += string(char)
-		}
-	}
-
-	return id
+	return ""
 }
 
 func convertJobType(linkedinType string) models.JobType {
@@ -44,7 +35,7 @@ func convertJobType(linkedinType string) models.JobType {
 	case "internship":
 		return models.INTERN
 	default:
-		return models.GRADUATE
+		return models.UNKNOWN
 	}
 }
 

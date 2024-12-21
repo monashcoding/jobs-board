@@ -22,9 +22,9 @@ func NewLinkedInScraper() *LinkedInScraper {
 	// Configure unblocker with strict rate limiting for LinkedIn
 	config := unblocker.Config{
 		Features: unblocker.Features{
-			UseRateLimiting:    true,
-			UseIPRotation:      true,
-			UseBrowserProfiles: true,
+			UseRateLimiting: true,
+			UseIPRotation:   true,
+			//UseBrowserProfiles: true,
 		},
 		BrightData: &unblocker.BrightDataConfig{
 			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
@@ -35,8 +35,8 @@ func NewLinkedInScraper() *LinkedInScraper {
 		},
 		Rate: &unblocker.RateLimitConfig{
 			RequestsPerMinute: 15, // More conservative rate limiting for LinkedIn
-			BaseDelay:         time.Second * 4,
-			MaxJitter:         time.Second * 2,
+			BaseDelay:         time.Second * 15,
+			MaxJitter:         time.Second * 20,
 		},
 	}
 
@@ -63,18 +63,42 @@ func (s *LinkedInScraper) URL() string {
 func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	listings := []models.Listing{}
 
+	MAX_JOBS_TO_SCRAPE := 5
+
 	searchParams := map[string]string{
-		"keywords": "software developer graduate",
+		"keywords": `(graduate OR junior OR intern) (
+            "software engineer" OR 
+            "software developer" OR 
+            "data engineer" OR 
+            "data scientist" OR 
+            "machine learning" OR 
+            "security engineer" OR 
+            "cyber security" OR 
+            "devops engineer" OR 
+            "site reliability engineer" OR 
+            "sre" OR 
+            "full stack" OR 
+            "frontend engineer" OR 
+            "backend engineer" OR 
+            "cloud engineer" OR 
+            "systems engineer" OR
+            "quantitative trader" OR 
+            "quant developer" OR 
+            "algorithmic trading" OR 
+            "quant analyst" OR 
+            "quantitative analyst" OR 
+            "trading systems"
+        )`,
 		"location": "Australia",
 		"distance": "50",
-		//"f_TPR":    "r86400",
-		//"f_JT":     "F,I",
-		"pageNum": "0",
-		"start":   "0",
+		"f_E":      "1,2",      // 1=Internship, 2=Entry level
+		"f_JT":     "F,I",      // F=Full-time, I=Internship
+		"f_TPR":    "r2592000", // Past month
+		"start":    "0",
 	}
 
 	searchURL := buildSearchURL(s.baseURL, searchParams)
-	utils.Log("Searching for jobs with this URL: %s", searchURL)
+	//utils.Log("Searching for jobs with this URL: %s", searchURL)
 
 	req, err := http.NewRequest("GET", searchURL, nil)
 	if err != nil {
@@ -92,14 +116,20 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 		utils.Error("Failed to save search response: %v", err)
 	}
 
-	utils.Log("Got search response with status: %d", resp.StatusCode)
+	//utils.Log("Got search response with status: %d", resp.StatusCode)
 
 	jobs, err := parseSearchResults(resp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse search results: %w", err)
 	}
 
-	utils.Log("Found %d jobs in search results. Starting to parse individual jobs. \n\n", len(jobs))
+	if MAX_JOBS_TO_SCRAPE > 0 && len(jobs) > MAX_JOBS_TO_SCRAPE {
+		jobs = jobs[:MAX_JOBS_TO_SCRAPE]
+		utils.Log("Trimming job results to %d", MAX_JOBS_TO_SCRAPE)
+
+	}
+
+	utils.Log("Found %d jobs in search results. Starting to parse individual jobs. \n", len(jobs))
 
 	for i, job := range jobs {
 		utils.Log("Processing job %d/%d", i+1, len(jobs))
@@ -138,6 +168,6 @@ func (s *LinkedInScraper) saveResponse(resp *http.Response, prefix string) error
 	// Important: Create new reader for resp.Body since we consumed it
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 
-	utils.Log("Saved response to %s", filename)
+	//utils.Log("Saved response to %s", filename)
 	return nil
 }

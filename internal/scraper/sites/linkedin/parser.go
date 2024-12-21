@@ -7,6 +7,7 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -78,7 +79,7 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 		utils.Error("Failed to save job response: %v", err)
 	}
 
-	utils.Log("Got job details response with status: %d", resp.StatusCode)
+	//utils.Log("Got job details response with status: %d", resp.StatusCode)
 
 	// Check if we got redirected to signup page
 	if strings.Contains(resp.Request.URL.Path, "/signup") {
@@ -94,21 +95,36 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 	// Extract job description
 	description := doc.Find("div.show-more-less-html__markup").Text()
 
+	// Check for external apply URL first
+	if externalLink := doc.Find("a.sign-up-modal__company_webiste"); externalLink.Length() > 0 {
+		if href, exists := externalLink.Attr("href"); exists {
+			// Parse the URL to extract the application URL from query params
+			if parsedURL, err := url.Parse(href); err == nil {
+				if encodedURL := parsedURL.Query().Get("url"); encodedURL != "" {
+					// URL decode the application URL
+					if decodedURL, err := url.QueryUnescape(encodedURL); err == nil {
+						job.ApplyURL = decodedURL
+					}
+				}
+			}
+		}
+	}
+
 	// Convert to our job model
 	listing := models.Listing{
-		Title:       job.Title,
-		Description: description,
+		Title:       strings.TrimSpace(job.Title),
+		Description: strings.TrimSpace(description),
 		Company: models.Company{
-			Name:    job.Company,
+			Name:    strings.TrimSpace(job.Company),
 			Website: job.CompanyURL,
 		},
-		ApplicationURL: jobURL,
+		ApplicationURL: job.ApplyURL,
 		SourceURLs:     []string{jobURL},
 		Type:           convertJobType(job.JobType),
 		Locations:      parseLocations(job.Location),
-		StudyFields:    []models.StudyField{models.SOFTWARE},
-		StartDate:      time.Now(),
-		WorkingRights:  []models.WorkingRight{models.AUS_CITIZEN, models.AUS_PR},
+		StudyFields:    nil,
+		StartDate:      time.Unix(0, 0).UTC(),
+		WorkingRights:  nil,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
