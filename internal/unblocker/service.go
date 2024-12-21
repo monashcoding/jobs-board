@@ -4,8 +4,10 @@ package unblocker
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
@@ -16,6 +18,7 @@ type service struct {
 	cookieManager  CookieManager
 	ipManager      IPRotationManager
 	rateManager    RateLimitManager
+	headerManager  HeaderManager
 	client         *http.Client
 }
 
@@ -51,15 +54,25 @@ func (s *service) initializeFeatures() error {
 		s.rateManager = newRateManager(*s.config.Rate)
 	}
 
+	if s.config.Features.UseHeaderManagement {
+		s.headerManager = newHeaderManager(s.config.Headers)
+	}
+
 	return nil
 }
 
 func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
+	utils.Log("Making Request: %s %s", req.Method, req.URL.String())
+
+	var unblockerInfo []string
+
 	// Apply rate limiting if enabled
 	if s.rateManager != nil {
-		if err := s.rateManager.Wait(ctx); err != nil {
+		delay, err := s.rateManager.Wait(ctx)
+		if err != nil {
 			return nil, err
 		}
+		unblockerInfo = append(unblockerInfo, fmt.Sprintf("[RATE] Waited %.2fs", delay.Seconds()))
 	}
 
 	// Get and apply browser profile if enabled
@@ -71,6 +84,7 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		}
 		profileID = profile.ID
 		req.Header.Set("User-Agent", profile.UserAgent)
+		unblockerInfo = append(unblockerInfo, fmt.Sprintf("[BROWSER] Profile ID %s", profileID))
 	}
 
 	// Apply cookies if enabled
@@ -82,10 +96,32 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		for _, cookie := range cookies {
 			req.AddCookie(cookie)
 		}
+		unblockerInfo = append(unblockerInfo, fmt.Sprintf("[COOKIES] %d in use", len(cookies)))
+	}
+
+	// Apply headers if enabled
+	var referrer string
+	if s.headerManager != nil {
+		headers, err := s.headerManager.GetHeaders(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range headers {
+			if k == "Referer" && len(v) > 0 {
+				referrer = v[0]
+			}
+			req.Header[k] = v
+		}
+		headerCount := len(headers)
+		headerInfo := fmt.Sprintf("[HEADERS] %d in use", headerCount)
+		if referrer != "" {
+			headerInfo += fmt.Sprintf(", referral from %s", referrer)
+		}
+		unblockerInfo = append(unblockerInfo, headerInfo)
 	}
 
 	// Configure proxy if enabled
-	var usingProxy bool
+	var sessionID string
 	if s.ipManager != nil {
 		proxyURL, err := s.ipManager.GetProxy(ctx)
 		if err != nil {
@@ -97,20 +133,26 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 			return nil, err
 		}
 
-		// Create a new transport with the proxy
+		// Extract session ID from proxy URL
+		if parts := strings.Split(proxyUrlParsed.User.Username(), "-session-"); len(parts) > 1 {
+			sessionID = strings.Split(parts[1], "-")[0]
+		}
+
 		transport := &http.Transport{
 			Proxy: http.ProxyURL(proxyUrlParsed),
 		}
-
 		s.client.Transport = transport
-		usingProxy = true
-		utils.Log("Request will be made using proxy: %s", proxyUrlParsed.Host)
-	} else {
-		utils.Error("No proxy configured - request will be made with direct connection")
-		usingProxy = false
+		unblockerInfo = append(unblockerInfo, fmt.Sprintf("[PROXY] Session ID %s", sessionID))
+	}
+
+	// Log concise unblocker info
+	if len(unblockerInfo) > 0 {
+		utils.Log("Unblockers: %s", strings.Join(unblockerInfo, ", "))
 	}
 
 	// Make the request
+	utils.Log("Headers: %v", req.Header)
+
 	resp, err := s.client.Do(req)
 	if err != nil {
 		if s.ipManager != nil {
@@ -119,28 +161,28 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		return nil, err
 	}
 
-	// Log proxy usage result
-	if usingProxy {
-		utils.Log("Request completed successfully through proxy")
+	if resp.StatusCode >= 400 {
+		utils.Error("Bad Response Code: %d", resp.StatusCode)
 	}
 
-	// Report success and update state
+	// Log response status
+	utils.Log("Response [%d]: %s", resp.StatusCode, req.URL.Path)
+
+	// Handle post-request tasks
 	if s.ipManager != nil {
 		s.ipManager.ReportSuccess(ctx, req.URL.String())
 	}
-
 	if s.rateManager != nil {
 		s.rateManager.ReportRequest(ctx, req.URL.Host)
 	}
-
-	// Save cookies from response if enabled
 	if s.cookieManager != nil {
 		s.cookieManager.SetCookies(ctx, req.URL.Host, resp.Cookies())
 	}
-
-	// Release browser profile if used
 	if s.browserManager != nil && profileID != "" {
 		s.browserManager.ReleaseProfile(ctx, profileID)
+	}
+	if s.headerManager != nil {
+		s.headerManager.UpdateHeaders(ctx, resp.Header)
 	}
 
 	return resp, nil
