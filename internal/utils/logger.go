@@ -16,10 +16,15 @@ func Log(format string, args ...interface{}) {
 	logWithOptionalLevel(message, "", 2)
 }
 
-// Error logs a message with ERROR level and optional formatting
+// ANSI escape codes for colors
+const (
+	colorRed   = "\033[31m"
+	colorReset = "\033[0m"
+)
+
 func Error(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	logWithOptionalLevel(message, "ERROR", 2)
+	logWithOptionalLevel(colorRed+message+colorReset, "ERROR", 2)
 }
 
 // Debug logs a message with DEBUG level and optional formatting
