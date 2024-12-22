@@ -8,12 +8,30 @@ import (
 	"runtime"
 	"strings"
 	"time"
+    "strconv"
 )
+
+var devMode bool
+
+func init() {
+    devModeStr := os.Getenv("DEV_MODE")
+    if devModeStr == "" {
+        devMode = true
+        return
+    }
+    var err error
+    devMode, err = strconv.ParseBool(devModeStr)
+    if err != nil {
+        devMode = true
+    }
+}
 
 // Log prints a standard log message with optional formatting
 func Log(format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	logWithOptionalLevel(message, "", 2, "\033[0m") // Reset
+    if devMode {
+        message := fmt.Sprintf(format, args...)
+        logWithOptionalLevel(message, "", 2, "\033[0m") // Reset
+    }
 }
 
 // Error logs a message with ERROR level and optional formatting
@@ -24,8 +42,10 @@ func Error(format string, args ...interface{}) {
 
 // Debug logs a message with DEBUG level and optional formatting
 func Debug(format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	logWithOptionalLevel(message, "DEBUG", 2, "\033[34m") // Blue
+    if devMode {
+        message := fmt.Sprintf(format, args...)
+        logWithOptionalLevel(message, "DEBUG", 2, "\033[34m") // Blue
+    }
 }
 
 // Warn logs a message with WARN level and a [!] prefix
