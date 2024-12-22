@@ -27,7 +27,6 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 			jobType, err := GradConJobTypeToMPLOYJobType(campaign)
 			
 			closeDate := GetGradConCloseDate(campaign)
-			startDate := GetGradConStartDate(campaign)
 		
 			workingRights, err := GradConWorkRightsToMPLOYWorkingRights(campaign)
 			if err != nil {
@@ -39,18 +38,17 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 
 			listing := models.Listing{
 				Title: campaign.Title,
-				Description: campaign.Description,
+				Description: &campaign.Description,
 				Company: models.Company{
 					Name: gradConnect.CustomerOrganisation.Name,
-					Website: employerUrl,
+					Website: &employerUrl,
 				},
-				ApplicationURL: campaign.OriginTargetURL,
+				ApplicationURL: &campaign.OriginTargetURL,
 				SourceURLs:[]string{jobUrl},
-				Type: jobType,
+				Type: &jobType,
 				CloseDate: &closeDate,
 				Locations: locations,
 				StudyFields: studyFields,
-				StartDate: &startDate,
 				WorkingRights: workingRights,
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),
@@ -76,39 +74,12 @@ func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]model
 	return locations, nil
 }
 
-func GradConStudyFieldsToMPLOYStudyFields(campaign GradConnectCampaign) ([]models.StudyField, error) {
-	studyFields := []models.StudyField{}
+func GradConStudyFieldsToMPLOYStudyFields(campaign GradConnectCampaign) ([]string, error) {
+	studyFields := []string{}
 	for _, discipline := range campaign.Disciplines {
-		studyFields = append(studyFields, models.StudyField(discipline))
+		studyFields = append(studyFields, discipline)
 	}
 	return studyFields, nil
-}
-
-func GetGradConStartDate(campaign GradConnectCampaign) (time.Time) {
-	defaultDate := time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
-	for _, field := range campaign.AdditionalFields {
-		if (field.Type == "start_date") {
-			
-			valueStr, ok := field.Value.(string)
-			if !ok {
-				fmt.Printf("warn: error parsing start date: value is not a string, defaulting to 1970-01-01T00:00:00Z\n")
-				return defaultDate
-			}
-
-			startDate, err := time.Parse("2006-01-02", valueStr)
-
-			if err != nil {
-				fmt.Printf("warn: error parsing start date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
-
-				return defaultDate
-			} else {
-				return startDate
-			} 
-		}
-	}
-
-	fmt.Printf("warn: error parsing start date: No start date provided, defaulting to 1970-01-01T00:00:00Z\n")
-	return defaultDate
 }
 
 func GetGradConCloseDate(campaign GradConnectCampaign) (time.Time) {
