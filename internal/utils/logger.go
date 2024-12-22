@@ -28,6 +28,19 @@ func Debug(format string, args ...interface{}) {
 	logWithOptionalLevel(message, "DEBUG", 2)
 }
 
+// Warn logs a message with WARN level and a [!] prefix
+func Warn(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel("[!] "+message, "WARN", 2)
+}
+
+// Success logs a message with a [\u2713] prefix
+func Success(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel("[\u2713] "+message, "", 2)
+}
+
+
 // Fatal logs a message and terminates the program
 func Fatal(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
