@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
@@ -17,6 +18,41 @@ import (
 )
 
 func main() {
+	// Uncomment this to run the scraper immediately [Don't forget to comment out the scheduler below]
+	// RunScraper();
+
+	/*-----------------------------------------------------------------*/
+	/* The code below schedules the scraper to run at 12AM every night */
+	/*-----------------------------------------------------------------*/
+	ScheduleScraper()
+}
+
+func ScheduleScraper() {
+	now := time.Now()
+	nextRun := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location()) // Run at 12 AM
+	utils.Log("Next run at %s", nextRun.String())
+
+	if now.After(nextRun) {
+			nextRun = nextRun.Add(24 * time.Hour)
+	}
+	
+	duration := nextRun.Sub(now)
+
+	// Create ticker for daily runs
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// First run after initial delay
+	time.Sleep(duration)
+	RunScraper()
+
+	// Subsequent runs
+	for range ticker.C {
+		RunScraper()
+	}
+}
+
+func RunScraper() {
 	utils.Log("Starting MPLOY Scraper.")
 
 	// Set up context with cancellation
