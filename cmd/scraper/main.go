@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
@@ -18,23 +20,67 @@ import (
 )
 
 func main() {
-	// Uncomment this to run the scraper immediately [Don't forget to comment out the scheduler below]
-	// RunScraper();
+	// Load environment variables
+	utils.Log("Loading environment variables from .env file...")
+	if err := godotenv.Load(); err != nil {
+		utils.Fatal(".env file not found: %v\n", err)
+	}
+	utils.Log("Environment variables loaded.")
 
-	/*-----------------------------------------------------------------*/
-	/* The code below schedules the scraper to run at 12AM every night */
-	/*-----------------------------------------------------------------*/
-	ScheduleScraper()
+	// Scraper Wrapper
+	if (os.Getenv("SCRAPING_TYPE") == "INSTANT") { 
+		RunScraper()
+		return
+	}
+
+	if (os.Getenv("SCRAPING_TYPE") == "SCHEDULED") {
+		ScheduleScraper()
+		return
+	}
+
+	utils.Fatal("Invalid scraping type. Please set SCRAPING_TYPE to either INSTANT or SCHEDULED in .env file.")
 }
 
 func ScheduleScraper() {
 	now := time.Now()
-	nextRun := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, now.Location()) // Run at 12 AM
-	utils.Log("Next run at %s", nextRun.String())
 
-	if now.After(nextRun) {
-			nextRun = nextRun.Add(24 * time.Hour)
+	// Calculate next run time
+	scheduledHour := os.Getenv("SCRAPING_TIME_HOUR")
+	scheduledMinute := os.Getenv("SCRAPING_TIME_MINUTE")
+
+	if scheduledHour == "" || scheduledMinute == "" {
+		utils.Fatal("Scheduled hour or minute not set in .env file.")
+	}	
+
+	scheduledHourInt, err := strconv.Atoi(scheduledHour)
+	if err != nil {
+		utils.Fatal("Invalid scheduled hour in .env file.")
 	}
+
+	scheduledMinuteInt, err := strconv.Atoi(scheduledMinute)
+	if err != nil {
+		utils.Fatal("Invalid scheduled minute in .env file.")
+	}
+
+	scheduledDay := now.Day()
+
+	// if hour and minute is before now, schedule for next day
+	if scheduledHourInt < now.Hour() || (scheduledHourInt == now.Hour() && scheduledMinuteInt < now.Minute()) {
+		scheduledDay = now.Day() + 1
+	}
+
+	nextRun := time.Date(
+		now.Year(), // year
+		now.Month(), // month
+		scheduledDay, // day
+		scheduledHourInt, // hour 
+		scheduledMinuteInt, // minute
+		0, // second
+		0, // nanosecond
+		now.Location(), // location
+	)
+
+	utils.Log("Next run at %s", nextRun.String())
 	
 	duration := nextRun.Sub(now)
 
