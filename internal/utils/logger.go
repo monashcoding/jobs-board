@@ -8,34 +8,66 @@ import (
 	"runtime"
 	"strings"
 	"time"
+    "strconv"
 )
+
+var devMode bool
+
+func init() {
+    devModeStr := os.Getenv("DEV_MODE")
+    if devModeStr == "" {
+        devMode = true
+        return
+    }
+    var err error
+    devMode, err = strconv.ParseBool(devModeStr)
+    if err != nil {
+        devMode = true
+    }
+}
 
 // Log prints a standard log message with optional formatting
 func Log(format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	logWithOptionalLevel(message, "", 2)
+    if devMode {
+        message := fmt.Sprintf(format, args...)
+        logWithOptionalLevel(message, "", 2, "\033[0m") // Reset
+    }
 }
 
 // Error logs a message with ERROR level and optional formatting
 func Error(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	logWithOptionalLevel(message, "ERROR", 2)
+	logWithOptionalLevel(message, "ERROR", 2, "\033[31m") // Red
 }
 
 // Debug logs a message with DEBUG level and optional formatting
 func Debug(format string, args ...interface{}) {
+    if devMode {
+        message := fmt.Sprintf(format, args...)
+        logWithOptionalLevel(message, "DEBUG", 2, "\033[34m") // Blue
+    }
+}
+
+// Warn logs a message with WARN level and a [!] prefix
+func Warn(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	logWithOptionalLevel(message, "DEBUG", 2)
+	logWithOptionalLevel("[!] "+message, "WARN", 2, "\033[33m") // Yellow
+}
+
+// Success logs a message with a [\u2713] prefix
+func Success(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel("[\u2713] "+message, "", 2, "\033[32m") // Green
 }
 
 // Fatal logs a message and terminates the program
 func Fatal(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
-	logWithOptionalLevel(message, "FATAL", 2)
+	logWithOptionalLevel(message, "FATAL", 2, "\033[31m") // Red
 	os.Exit(1)
 }
 
-func logWithOptionalLevel(message string, level string, skip int) {
+func logWithOptionalLevel(message string, level string, skip int, color string) {
 	// Get the caller's function name
 	pc, _, _, ok := runtime.Caller(skip)
 	functionName := "unknown"
@@ -52,10 +84,11 @@ func logWithOptionalLevel(message string, level string, skip int) {
 
 	// Format timestamp
 	timestamp := time.Now().Format("15:04:05")
+	resetColor := "\033[0m"
 
 	if level != "" {
-		fmt.Printf("[%s %s %s] [%s] %s\n", level, functionName, timestamp, message)
+		fmt.Printf("%s[%s] [%s %s] [%s] %s\n", color, level, functionName, timestamp, message, resetColor)
 	} else {
-		fmt.Printf("[%s %s] %s\n", functionName, timestamp, message)
+		fmt.Printf("%s[%s %s] %s%s\n", color, functionName, timestamp, message, resetColor)
 	}
 }

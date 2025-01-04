@@ -10,12 +10,17 @@ import (
 func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listing, error) {
 	sourceUrl := baseURL + opportunity.DetailPageURl
 
+	companyWebsite := baseURL + opportunity.ParentEmployer.DetailPageUrl
+
 	company := models.Company{
 		Name:    opportunity.ParentEmployer.Title,
-		Website: baseURL + opportunity.ParentEmployer.DetailPageUrl,
+		Website: &companyWebsite,
 	}
 
 	jobType, err:= ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label) // TO BE IMPLEMENTED IN TICKET (MAC-63) 
+	if err != nil {
+		fmt.Printf("warn: error getting job type: %v", err)
+	}
 
 	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
 	if err != nil {
@@ -33,17 +38,6 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		return nil, fmt.Errorf("error getting study fields: %v", err)
 	}
 
-	var parsedStartDate time.Time
-	if opportunity.StartDate.Category != nil {
-		parsedStartDate, err = time.Parse("2006-01-02T15:04:05.000Z", opportunity.StartDate.Category.Label)
-		if err != nil {
-			fmt.Printf("warn: error parsing start date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
-			parsedStartDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
-		}
-	} else {
-		parsedStartDate = time.Now()
-	}
-
 	workingRights, err := ProspleWorkingRightsToMPLOYWorkingRights(opportunity)
 	if err != nil {
 		return nil, fmt.Errorf("error getting working rights: %v", err)
@@ -51,15 +45,14 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 
 	return &models.Listing{
 		Title:          opportunity.Title,
-		Description:    opportunity.Overview.FullText,
+		Description:    &opportunity.Overview.FullText,
 		Company:        company,
-		ApplicationURL: opportunity.ApplyByUrl,
+		ApplicationURL: &opportunity.ApplyByUrl,
 		SourceURLs:     []string{sourceUrl},
-		Type:           jobType,
+		Type:           &jobType,
 		CloseDate:      &parsedCloseDate,
 		Locations:      locations,
 		StudyFields:    studyfield,
-		StartDate:      parsedStartDate,
 		WorkingRights:  workingRights,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
@@ -126,10 +119,10 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 	return locations, nil
 }
 
-func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]models.StudyField, error) {
-	studyFields := []models.StudyField{}
+func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]string, error) {
+	studyFields := []string{}
 	for _, field := range opportunity.StudyFields {
-		studyFields = append(studyFields, models.StudyField(field.Label))
+		studyFields = append(studyFields, field.Label)
 	}
 	return studyFields, nil
 }
