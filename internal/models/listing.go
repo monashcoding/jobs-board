@@ -13,7 +13,7 @@ const (
 	FIRST_YEAR JobType = "FIRST_YEAR"
 	INTERN     JobType = "INTERN"
 	GRADUATE   JobType = "GRADUATE"
-	OTHER JobType = "OTHER"
+	OTHER			 JobType = "OTHER"
 )
 
 type LocationType string

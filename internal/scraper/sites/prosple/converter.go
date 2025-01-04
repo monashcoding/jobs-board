@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listing, error) {
@@ -17,30 +18,30 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		Website: &companyWebsite,
 	}
 
-	jobType, err:= ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label) // TO BE IMPLEMENTED IN TICKET (MAC-63) 
+	jobType, err:= ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label)
 	if err != nil {
-		fmt.Printf("warn: error getting job type: %v", err)
+		utils.Warn("error getting job type: %v", err)
 	}
 
 	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
 	if err != nil {
-		fmt.Printf("warn: error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+		utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
 		parsedCloseDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
 	}
 
 	locations, err := ProspleLocationsToMPLOYLocationTypes(opportunity)
 	if err != nil {
-		return nil, fmt.Errorf("error getting locations: %v", err)
+		utils.Warn("error getting locations: %v", err)
 	}
 
 	studyfield, err := ProspleStudyFieldsToMPLOYStudyFields(opportunity)
 	if err != nil {
-		return nil, fmt.Errorf("error getting study fields: %v", err)
+		utils.Warn("error getting study fields: %v", err)
 	}
 
 	workingRights, err := ProspleWorkingRightsToMPLOYWorkingRights(opportunity)
 	if err != nil {
-		return nil, fmt.Errorf("error getting working rights: %v", err)
+		utils.Warn("error getting working rights: %v", err)
 	}
 
 	return &models.Listing{
@@ -60,7 +61,6 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 }
 
 func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.LocationType, error) {
-	// TODO:: Extend this to match location type names to our Enum
 	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
 
 	// Predefined location types mapping
@@ -128,8 +128,8 @@ func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]string, er
 }
 
 func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models.WorkingRight, error) {
-	// TODO:: Extend this to match working right type names to our Enum
 	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
+	
     // Predefined working rights mapping
     workingRightsMap := map[string]models.WorkingRight{
         "Australian Permanent Resident":       models.AUS_PR,
@@ -203,6 +203,6 @@ func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error){
 	}
 
 	// If the job type doesn't exist in the map, return an error
-	return "", fmt.Errorf("unknown job type: %s", jobtype)
+	return models.JobType(jobtype), fmt.Errorf("unknown job type: %s", jobtype)
 }
 
