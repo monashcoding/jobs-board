@@ -2,6 +2,7 @@ package gradcon
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -13,26 +14,26 @@ import (
 type APIResponse = []GradConnectData
 
 type GradConnectData struct {
-	Campaigns []GradConnectCampaign `json:"campaigns"`
+	Campaigns            []GradConnectCampaign           `json:"campaigns"`
 	CustomerOrganisation GradConnectCustomerOrganisation `json:"customer_organization"`
-	EarliestClosingDate string `json:"earliest_closing_date"`
+	EarliestClosingDate  string                          `json:"earliest_closing_date"`
 }
 
 type GradConnectCampaign struct {
-	Id string `json:"id"`
-	Title string `json:"title"`
-	Slug string `json:"slug"`
+	Id          string `json:"id"`
+	Title       string `json:"title"`
+	Slug        string `json:"slug"`
 	Description string `json:"description"`
-	JobType string `json:"job_type"`	
-	TargetURL string `json:"target_url"`
-	Interval struct {
+	JobType     string `json:"job_type"`
+	TargetURL   string `json:"target_url"`
+	Interval    struct {
 		Start string `json:"start"`
-		End string `json:"end"`
+		End   string `json:"end"`
 	} `json:"interval"`
-	Disciplines []string `json:"disciplines"`
-	Locations []string `json:"locations"`
-	WorkRights []string `json:"work_rights"`
-	OriginTargetURL string `json:"origin_target_url"`
+	Disciplines      []string                     `json:"disciplines"`
+	Locations        []string                     `json:"locations"`
+	WorkRights       []string                     `json:"work_rights"`
+	OriginTargetURL  string                       `json:"origin_target_url"`
 	AdditionalFields []GradConnectAdditionalField `json:"additional_fields"`
 }
 
@@ -42,14 +43,14 @@ type GradConnectAdditionalField struct {
 }
 
 type GradConnectCustomerOrganisation struct {
-	Id string `json:"id"`
+	Id   string `json:"id"`
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 }
 
 func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
 	params := "?disciplines=computer-science&limit=20&limit=" + strconv.Itoa(limit) + "&offset=" + strconv.Itoa(offset) + "&recommended=true"
-	apiUrl := url + params;
+	apiUrl := url + params
 
 	// Create a new HTTP client
 	client := &http.Client{}
@@ -76,10 +77,13 @@ func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
 
 	utils.Log("API response successfully received [\u2713]")
 
-	var result APIResponse 
+	var result APIResponse
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		log.Fatal("Error unmarshalling response:", err)
+		fmt.Println("Error unmarshalling response:", err)
+		return &result, err
+		//fmt.Println(&result)
+		//log.Fatal("Error unmarshalling response:", err)
 	}
 
 	utils.Log("Reponse body successfully parsed [\u2713]")

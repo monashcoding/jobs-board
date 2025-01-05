@@ -43,7 +43,7 @@ func main() {
 	// Initialize scrapers
 	scrapers := []scraper.Scraper{
 		sites.NewGradconScraper(),
-		sites.NewProspleScraper(),
+		//sites.NewProspleScraper(),
 		//sites.NewLinkedinScraper(),
 	}
 
@@ -79,6 +79,6 @@ func main() {
 	}
 
 	utils.Log("Pipeline section finished [\u2713]")
-	
+
 	utils.Log("Processing completed [\u2713]")
 }
