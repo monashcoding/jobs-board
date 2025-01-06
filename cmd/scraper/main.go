@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -28,44 +27,29 @@ func main() {
 	utils.Log("Environment variables loaded.")
 
 	// Scraper Wrapper
-	if (os.Getenv("SCRAPING_TYPE") == "INSTANT") { 
+	if (os.Getenv("ENVIRONMENT") == "DEVELOPMENT") { 
 		RunScraper()
 		return
 	}
 
-	if (os.Getenv("SCRAPING_TYPE") == "SCHEDULED") {
+	if (os.Getenv("ENVIRONMENT") == "PRODUCTION") {
 		ScheduleScraper()
 		return
 	}
 
-	utils.Fatal("Invalid scraping type. Please set SCRAPING_TYPE to either INSTANT or SCHEDULED in .env file.")
+	utils.Fatal("Invalid environment. Please set ENVIRONMENT to either DEVELOPMENT or PRODUCTION in .env file.")
 }
 
 func ScheduleScraper() {
 	now := time.Now()
 
 	// Calculate next run time
-	scheduledHour := os.Getenv("SCRAPING_TIME_HOUR")
-	scheduledMinute := os.Getenv("SCRAPING_TIME_MINUTE")
-
-	if scheduledHour == "" || scheduledMinute == "" {
-		utils.Fatal("Scheduled hour or minute not set in .env file.")
-	}	
-
-	scheduledHourInt, err := strconv.Atoi(scheduledHour)
-	if err != nil {
-		utils.Fatal("Invalid scheduled hour in .env file.")
-	}
-
-	scheduledMinuteInt, err := strconv.Atoi(scheduledMinute)
-	if err != nil {
-		utils.Fatal("Invalid scheduled minute in .env file.")
-	}
-
+	scheduledHour := 00
+	scheduledMinute := 00
 	scheduledDay := now.Day()
 
 	// if hour and minute is before now, schedule for next day
-	if scheduledHourInt < now.Hour() || (scheduledHourInt == now.Hour() && scheduledMinuteInt < now.Minute()) {
+	if scheduledHour < now.Hour() || (scheduledHour == now.Hour() && scheduledMinute < now.Minute()) {
 		scheduledDay = now.Day() + 1
 	}
 
@@ -73,8 +57,8 @@ func ScheduleScraper() {
 		now.Year(), // year
 		now.Month(), // month
 		scheduledDay, // day
-		scheduledHourInt, // hour 
-		scheduledMinuteInt, // minute
+		scheduledHour, // hour 
+		scheduledMinute, // minute
 		0, // second
 		0, // nanosecond
 		now.Location(), // location
