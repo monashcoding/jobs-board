@@ -145,6 +145,6 @@ func RunScraper() {
 	}
 
 	utils.Log("Pipeline section finished [\u2713]")
-	
+
 	utils.Log("Processing completed [\u2713]")
 }
