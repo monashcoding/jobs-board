@@ -43,7 +43,7 @@ func main() {
 	// Initialize scrapers
 	scrapers := []scraper.Scraper{
 		sites.NewGradconScraper(),
-		//sites.NewProspleScraper(),
+		sites.NewProspleScraper(),
 		//sites.NewLinkedinScraper(),
 	}
 
