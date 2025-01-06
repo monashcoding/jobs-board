@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
@@ -17,6 +19,70 @@ import (
 )
 
 func main() {
+	// Load environment variables
+	utils.Log("Loading environment variables from .env file...")
+	if err := godotenv.Load(); err != nil {
+		utils.Fatal(".env file not found: %v\n", err)
+	}
+	utils.Log("Environment variables loaded.")
+
+	// Scraper Wrapper
+	if (os.Getenv("ENVIRONMENT") == "DEVELOPMENT") { 
+		RunScraper()
+		return
+	}
+
+	if (os.Getenv("ENVIRONMENT") == "PRODUCTION") {
+		ScheduleScraper()
+		return
+	}
+
+	utils.Fatal("Invalid environment. Please set ENVIRONMENT to either DEVELOPMENT or PRODUCTION in .env file.")
+}
+
+func ScheduleScraper() {
+	now := time.Now()
+
+	// Calculate next run time
+	scheduledHour := 00
+	scheduledMinute := 00
+	scheduledDay := now.Day()
+
+	// if hour and minute is before now, schedule for next day
+	if scheduledHour < now.Hour() || (scheduledHour == now.Hour() && scheduledMinute < now.Minute()) {
+		scheduledDay = now.Day() + 1
+	}
+
+	nextRun := time.Date(
+		now.Year(), // year
+		now.Month(), // month
+		scheduledDay, // day
+		scheduledHour, // hour 
+		scheduledMinute, // minute
+		0, // second
+		0, // nanosecond
+		now.Location(), // location
+	)
+
+	utils.Log("Next run at %s", nextRun.String())
+	
+	duration := nextRun.Sub(now)
+
+	// Create ticker for daily runs
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// First run after initial delay
+	time.Sleep(duration)
+	RunScraper()
+
+	// Subsequent runs
+	for range ticker.C {
+		RunScraper()
+	}
+}
+
+func RunScraper() {
 	utils.Log("Starting MPLOY Scraper.")
 
 	// Set up context with cancellation
