@@ -2,9 +2,7 @@ package gradcon
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -24,7 +22,7 @@ type GradConnectCampaign struct {
 	Title       string `json:"title"`
 	Slug        string `json:"slug"`
 	Description string `json:"description"`
-	JobType     string `json:"job_type"`
+	JobType     interface{} `json:"job_type"` 
 	TargetURL   string `json:"target_url"`
 	Interval    struct {
 		Start string `json:"start"`
@@ -49,7 +47,7 @@ type GradConnectCustomerOrganisation struct {
 }
 
 func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
-	params := "?disciplines=computer-science&limit=20&limit=" + strconv.Itoa(limit) + "&offset=" + strconv.Itoa(offset) + "&recommended=true"
+	params := "?disciplines=computer-science&limit=" + strconv.Itoa(limit) + "&offset=" + strconv.Itoa(offset) + "&recommended=true"
 	apiUrl := url + params
 
 	// Create a new HTTP client
@@ -59,20 +57,20 @@ func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
 	req, err := http.NewRequest("GET", apiUrl, nil)
 
 	if err != nil {
-		log.Fatal("Error creating request:", err)
+		utils.Fatal("Error creating request: %v", err)
 	}
 
 	// Send the request
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal("Error making request:", err)
+		utils.Fatal("Error making request:", err)
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatal("Error reading response:", err)
+		utils.Fatal("Error reading response:", err)
 	}
 
 	utils.Log("API response successfully received [\u2713]")
@@ -80,10 +78,8 @@ func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
 	var result APIResponse
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		fmt.Println("Error unmarshalling response:", err)
+		utils.Warn("Error parsing response body: %v", err)
 		return &result, err
-		//fmt.Println(&result)
-		//log.Fatal("Error unmarshalling response:", err)
 	}
 
 	utils.Log("Reponse body successfully parsed [\u2713]")

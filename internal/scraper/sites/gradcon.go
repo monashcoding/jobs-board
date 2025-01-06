@@ -38,19 +38,14 @@ func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Li
 
 	result, err := gradcon.SendAPIRequest(gradConnectApiUrl, pageSize, offset)
 	if err != nil {
-		fmt.Println("Notify Me Job found. Error: ", err)
-		return listings, err
-	}
-
-	if err != nil {
-		utils.Error("Failed to send API Request")
+		// return listings, err
 	}
 
 	for _, item := range *result {
 		gradConnectListings, err := gradcon.GradConnectToMPLOY(item, s.URL())
 
 		if err != nil {
-			fmt.Printf("Error converting opportunity to model: %v\n", err)
+			utils.Warn("Error converting opportunity to model: %v", err)
 			continue
 		}
 		listings = append(listings, gradConnectListings...)
@@ -77,7 +72,6 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 			if err != nil {
 				listings = append(listings, newListings...)
 				return listings, nil
-				//return nil, fmt.Errorf("failed to scrape GradConnect: %v", err)
 			}
 
 			if len(newListings) != pageSize {
@@ -103,6 +97,6 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 
 		listings = append(listings, newListings...)
 	}
-	fmt.Print(listings)
+
 	return listings, nil
 }

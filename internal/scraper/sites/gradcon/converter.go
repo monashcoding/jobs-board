@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listing, error) {
@@ -16,21 +17,24 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 
 			locations, err := GradConLocationsToMPLOYLocationTypes(campaign)
 			if err != nil {
-				return nil, fmt.Errorf("error getting locations: %v", err)
+				utils.Warn("error getting locations: %v", err)
 			}
 
 			studyFields, err := GradConStudyFieldsToMPLOYStudyFields(campaign)
 			if err != nil {
-				return nil, fmt.Errorf("error getting study fields: %v", err)
+				utils.Warn("error getting study fields: %v", err)
 			}
 
 			jobType, err := GradConJobTypeToMPLOYJobType(campaign)
+			if err != nil {
+				utils.Warn("error getting job type: %v", err)
+			}
 
 			closeDate := GetGradConCloseDate(campaign)
 
 			workingRights, err := GradConWorkRightsToMPLOYWorkingRights(campaign)
 			if err != nil {
-				return nil, fmt.Errorf("error getting working rights: %v", err)
+				utils.Warn("error getting working rights: %v", err)
 			}
 
 			employerUrl := url + "/employers/" + gradConnect.CustomerOrganisation.Slug
@@ -75,9 +79,7 @@ func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]model
 
 func GradConStudyFieldsToMPLOYStudyFields(campaign GradConnectCampaign) ([]string, error) {
 	studyFields := []string{}
-	for _, discipline := range campaign.Disciplines {
-		studyFields = append(studyFields, discipline)
-	}
+	studyFields = append(studyFields, campaign.Disciplines...)
 	return studyFields, nil
 }
 
@@ -88,7 +90,7 @@ func GetGradConCloseDate(campaign GradConnectCampaign) time.Time {
 	parsedEndDate, err := time.Parse(time.RFC3339, endDate)
 
 	if err != nil {
-		fmt.Printf("warn: error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z\n", err)
+		utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
 
 		return defaultDate
 	} else {
@@ -110,6 +112,24 @@ func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]mode
 func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType, error) {
 	// TODO:: Extend this to match working right type names to our Enum
 	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
-	fmt.Println(campaign.JobType)
-	return models.JobType(campaign.JobType), nil
+	
+	if jobType, ok := campaign.JobType.(string); ok {
+    // Use jobType as string
+		return models.JobType(jobType), nil
+	}
+
+	if jobTypeMap, ok := campaign.JobType.(map[string]interface{}); ok {
+    // Check if both 'id' and 'name' exist and are strings
+    name, nameOk := jobTypeMap["name"].(string)
+    _, idOk := jobTypeMap["id"].(string)
+    
+    if !nameOk || !idOk {
+        return "", fmt.Errorf("job_type map missing required string fields id and/or name")
+    }
+    
+    // Now safe to use name and id
+    return models.JobType(name), nil
+}
+
+	return models.JobType(""), fmt.Errorf("job type is not a valid string or object: %v", campaign.JobType)
 }
