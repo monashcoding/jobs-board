@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
@@ -62,8 +63,64 @@ func (s *service) initializeFeatures() error {
 }
 
 func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
-	utils.Log("Making Request: %s %s", req.Method, req.URL.String())
+	// Use default retry config if none provided
+	retryConfig := s.config.Retry
+	if retryConfig == nil {
+		retryConfig = DefaultRetryConfig()
+	}
 
+	var lastError error
+	var currentBackoff time.Duration
+
+	// Try the request up to MaxRetries times
+	for attempt := 0; attempt <= retryConfig.MaxRetries; attempt++ {
+		if attempt > 0 {
+			// Calculate backoff duration
+			currentBackoff = retryConfig.calculateBackoff(attempt-1, currentBackoff)
+			utils.Log("Retry attempt %d/%d after %v delay", attempt, retryConfig.MaxRetries, currentBackoff)
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(currentBackoff):
+				// Continue with retry
+			}
+		}
+
+		// Prepare and execute request
+		resp, err := s.executeRequest(ctx, req)
+		if err != nil {
+			lastError = fmt.Errorf("attempt %d failed: %w", attempt, err)
+			utils.Error("Request error [%d]: %v", err)
+			continue
+		}
+
+		utils.Log("Response [%d]: %s", resp.StatusCode, req.URL.Path)
+
+		// Check if we should retry based on response
+		if retryConfig.shouldRetry(resp) {
+			lastError = fmt.Errorf("attempt %d failed with status %d", attempt, resp.StatusCode)
+
+			// Use Retry-After header if available
+			if retryAfter := getRetryAfterDuration(resp); retryAfter > 0 {
+				currentBackoff = retryAfter
+				utils.Log("Using Retry-After header value: %v", currentBackoff)
+			}
+
+			resp.Body.Close()
+			continue
+		}
+
+		// Success! Return the response
+		return resp, nil
+	}
+
+	return nil, fmt.Errorf("max retries exceeded: %v", lastError)
+}
+
+// executeRequest handles the actual execution of the request with all middleware
+func (s *service) executeRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
+	utils.Log("Making Request: %s %s", req.Method, req.URL.String())
 	var unblockerInfo []string
 
 	// Apply rate limiting if enabled
@@ -100,24 +157,15 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 	}
 
 	// Apply headers if enabled
-	var referrer string
 	if s.headerManager != nil {
 		headers, err := s.headerManager.GetHeaders(ctx)
 		if err != nil {
 			return nil, err
 		}
 		for k, v := range headers {
-			if k == "Referer" && len(v) > 0 {
-				referrer = v[0]
-			}
 			req.Header[k] = v
 		}
-		headerCount := len(headers)
-		headerInfo := fmt.Sprintf("[HEADERS] %d in use", headerCount)
-		if referrer != "" {
-			headerInfo += fmt.Sprintf(", referral from %s", referrer)
-		}
-		unblockerInfo = append(unblockerInfo, headerInfo)
+		unblockerInfo = append(unblockerInfo, fmt.Sprintf("[HEADERS] %d in use", len(headers)))
 	}
 
 	// Configure proxy if enabled
@@ -151,22 +199,10 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 	}
 
 	// Make the request
-	utils.Log("Headers: %v", req.Header)
-
 	resp, err := s.client.Do(req)
 	if err != nil {
-		if s.ipManager != nil {
-			s.ipManager.ReportFailure(ctx, req.URL.String())
-		}
 		return nil, err
 	}
-
-	if resp.StatusCode >= 400 {
-		utils.Error("Bad Response Code: %d", resp.StatusCode)
-	}
-
-	// Log response status
-	utils.Log("Response [%d]: %s", resp.StatusCode, req.URL.Path)
 
 	// Handle post-request tasks
 	if s.ipManager != nil {

@@ -25,6 +25,7 @@ type Config struct {
 	Rate       *RateLimitConfig
 	Headers    *HeaderConfig
 	Cookies    *CookieConfig
+	Retry      *RetryConfig
 }
 
 // BrightDataConfig holds the configuration for Bright Data proxies
