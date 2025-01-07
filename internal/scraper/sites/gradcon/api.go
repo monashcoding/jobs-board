@@ -1,8 +1,13 @@
 package gradcon
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -18,12 +23,12 @@ type GradConnectData struct {
 }
 
 type GradConnectCampaign struct {
-	Id          string `json:"id"`
-	Title       string `json:"title"`
-	Slug        string `json:"slug"`
-	Description string `json:"description"`
-	JobType     interface{} `json:"job_type"` 
-	TargetURL   string `json:"target_url"`
+	Id          string      `json:"id"`
+	Title       string      `json:"title"`
+	Slug        string      `json:"slug"`
+	Description string      `json:"description"`
+	JobType     interface{} `json:"job_type"`
+	TargetURL   string      `json:"target_url"`
 	Interval    struct {
 		Start string `json:"start"`
 		End   string `json:"end"`
@@ -46,24 +51,21 @@ type GradConnectCustomerOrganisation struct {
 	Slug string `json:"slug"`
 }
 
-func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
+var ErrNoMoreResults = errors.New("no more results available")
+
+func SendAPIRequest(url string, limit int, offset int, unblocker unblocker.Service) (*APIResponse, error) {
 	params := "?disciplines=computer-science&limit=" + strconv.Itoa(limit) + "&offset=" + strconv.Itoa(offset) + "&recommended=true"
 	apiUrl := url + params
 
-	// Create a new HTTP client
-	client := &http.Client{}
-
 	// Create a new request
 	req, err := http.NewRequest("GET", apiUrl, nil)
-
 	if err != nil {
-		utils.Fatal("Error creating request: %v", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Send the request
-	resp, err := client.Do(req)
+	resp, err := unblocker.MakeRequest(context.Background(), req)
 	if err != nil {
-		utils.Fatal("Error making request:", err)
+		log.Fatal("Error making request:", err)
 	}
 	defer resp.Body.Close()
 
@@ -73,8 +75,6 @@ func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
 		utils.Fatal("Error reading response:", err)
 	}
 
-	utils.Log("API response successfully received [\u2713]")
-
 	var result APIResponse
 	err = json.Unmarshal(body, &result)
 	if err != nil {
@@ -82,7 +82,11 @@ func SendAPIRequest(url string, limit int, offset int) (*APIResponse, error) {
 		return &result, err
 	}
 
-	utils.Log("Reponse body successfully parsed [\u2713]")
+	if len(result) == 0 {
+		return nil, ErrNoMoreResults
+	}
+
+	utils.Success("Parsed %d jobs.", len(result))
 
 	return &result, nil
 }
