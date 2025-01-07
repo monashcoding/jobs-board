@@ -16,7 +16,6 @@ type ProspleScraper struct {
 }
 
 func NewProspleScraper() *ProspleScraper {
-	// Configure unblocker
 	config := unblocker.Config{
 		Features: unblocker.Features{
 			UseRateLimiting: true,
@@ -89,7 +88,7 @@ func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	pageSize := 50 // Number of listings per page
 
 	// Scrape all listings
-	scrapeAll := false
+	scrapeAll := true
 	if scrapeAll {
 		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
 		for i := 0; ; i++ {
