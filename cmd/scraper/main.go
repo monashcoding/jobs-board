@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,19 +22,18 @@ import (
 
 func main() {
 	// Load environment variables
-	utils.Log("Loading environment variables from .env file...")
 	if err := godotenv.Load(); err != nil {
 		utils.Fatal(".env file not found: %v\n", err)
 	}
-	utils.Log("Environment variables loaded.")
+	utils.Success("Environment variables loaded.")
 
 	// Scraper Wrapper
-	if (os.Getenv("ENVIRONMENT") == "DEVELOPMENT") { 
+	if os.Getenv("ENVIRONMENT") == "DEVELOPMENT" {
 		RunScraper()
 		return
 	}
 
-	if (os.Getenv("ENVIRONMENT") == "PRODUCTION") {
+	if os.Getenv("ENVIRONMENT") == "PRODUCTION" {
 		ScheduleScraper()
 		return
 	}
@@ -54,18 +55,18 @@ func ScheduleScraper() {
 	}
 
 	nextRun := time.Date(
-		now.Year(), // year
-		now.Month(), // month
-		scheduledDay, // day
-		scheduledHour, // hour 
+		now.Year(),      // year
+		now.Month(),     // month
+		scheduledDay,    // day
+		scheduledHour,   // hour
 		scheduledMinute, // minute
-		0, // second
-		0, // nanosecond
-		now.Location(), // location
+		0,               // second
+		0,               // nanosecond
+		now.Location(),  // location
 	)
 
 	utils.Log("Next run at %s", nextRun.String())
-	
+
 	duration := nextRun.Sub(now)
 
 	// Create ticker for daily runs
@@ -83,19 +84,17 @@ func ScheduleScraper() {
 }
 
 func RunScraper() {
-	utils.Log("Starting MPLOY Scraper.")
-
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Set up MongoDB connection
-	utils.Log("Setting up MongoDB connection.")
 	mongodb, err := database.NewMongoDB(ctx)
 	if err != nil {
 		utils.Fatal("Failed to connect to MongoDB: %v", err)
 	}
 	defer mongodb.Disconnect(ctx)
+	utils.Success("MongoDB connected.")
 
 	// Set up graceful shutdown
 	shutdown := make(chan os.Signal, 1)
@@ -108,10 +107,15 @@ func RunScraper() {
 
 	// Initialize scrapers
 	scrapers := []scraper.Scraper{
-		//gradcon.NewGradconScraper(),
-		//prosple.NewProspleScraper(),
+		gradcon.NewGradconScraper(),
+		prosple.NewProspleScraper(),
 		linkedin.NewLinkedInScraper(),
 	}
+
+	mvpUpload := steps.NewMVPUploadStep(mongodb)
+	utils.SetLogHandler(func(log string) {
+		mvpUpload.AddLog(log)
+	})
 
 	// Initialize pipeline
 	processingPipeline := pipeline.NewPipeline(
@@ -119,33 +123,28 @@ func RunScraper() {
 		steps.NewWriteJSONStep(),
 		//steps.NewNormalizationStep(),
 		//steps.NewDeduplicationStep(),
-		//steps.NewMongoDBStep(mongodb),
+		mvpUpload,
 	)
 
 	// Collect all listings from scrapers
-	utils.Log("Scraping started...")
-
 	var allListings []models.Listing
 	for _, s := range scrapers {
 		utils.Log("Running scraper %s...", s.Name())
 		listings, err := s.Scrape(ctx)
 		if err != nil {
-			utils.Error("[X] Error in %s scraper: %v", s.Name(), err)
+			utils.Error("Error in %s scraper: %v", s.Name(), err)
 			continue
 		}
-		utils.Log("Finished scraper %s with %d listings.", s.Name(), len(listings))
+		utils.Success("Finished scraper %s with %d listings.", s.Name(), len(listings))
 		allListings = append(allListings, listings...)
 	}
 
-	utils.Log("Scraping section finished [\u2713]")
-	utils.Log("Starting pipeline section [...]")
+	utils.Success("Scraping section finished. Starting pipelines...")
 
 	// Run pipeline with scrapers
 	if _, err := processingPipeline.Run(ctx, allListings); err != nil {
 		utils.Error("Error processing listings: %v", err)
 	}
 
-	utils.Log("Pipeline section finished [\u2713]")
-
-	utils.Log("Processing completed [\u2713]")
+	utils.Success("Pipelines completed.")
 }
