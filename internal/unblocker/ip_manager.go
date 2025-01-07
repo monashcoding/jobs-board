@@ -32,7 +32,7 @@ func newIPRotationManager(config *BrightDataConfig) IPRotationManager {
 		return nil
 	}
 
-	utils.Log("Initializing Bright Data IP manager for zone: %s", config.ZoneName)
+	utils.Success("Started Bright Data IP manager for zone: %s", config.ZoneName)
 	return &ipManager{
 		config: config,
 	}

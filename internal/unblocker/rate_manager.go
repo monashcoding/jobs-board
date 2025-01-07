@@ -7,8 +7,6 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-
-	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 type rateManager struct {
@@ -35,8 +33,6 @@ func (m *rateManager) Wait(ctx context.Context) (time.Duration, error) {
 		jitter := time.Duration(rand.Int63n(int64(m.config.MaxJitter)))
 		delay += jitter
 	}
-
-	utils.Log("Rate limit: waiting for %v", delay)
 
 	select {
 	case <-ctx.Done():

@@ -54,7 +54,7 @@ func (s *WriteJSONStep) Process(ctx context.Context, listings []models.Listing) 
 		return nil, fmt.Errorf("failed to write JSON file: %w", err)
 	}
 
-	utils.Log("Successfully wrote %d listings to %s", len(listings), filename)
+	utils.Success("Wrote %d listings to %s", len(listings), filename)
 
 	return listings, nil
 }

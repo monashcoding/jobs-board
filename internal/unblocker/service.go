@@ -91,11 +91,15 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		resp, err := s.executeRequest(ctx, req)
 		if err != nil {
 			lastError = fmt.Errorf("attempt %d failed: %w", attempt, err)
-			utils.Error("Request error [%d]: %v", err)
+			utils.Error("[CODE %d] Error fetching %s - %v", resp.StatusCode, req.URL.Path, err)
 			continue
 		}
 
-		utils.Log("Response [%d]: %s", resp.StatusCode, req.URL.Path)
+		if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+			utils.Success("Success fetching %s", req.URL.Path)
+		} else {
+			utils.Error("[CODE %d] Error fetching %s", resp.StatusCode, req.URL.Path)
+		}
 
 		// Check if we should retry based on response
 		if retryConfig.shouldRetry(resp) {
