@@ -119,7 +119,6 @@ func RunScraper() {
 
 	// Initialize pipeline
 	processingPipeline := pipeline.NewPipeline(
-		steps.NewLogStep("Initial"),
 		steps.NewWriteJSONStep(),
 		//steps.NewNormalizationStep(),
 		//steps.NewDeduplicationStep(),
