@@ -34,9 +34,9 @@ func NewLinkedInScraper() *LinkedInScraper {
 			UseLocalDNS: true,
 		},
 		Rate: &unblocker.RateLimitConfig{
-			RequestsPerMinute: 15, // More conservative rate limiting for LinkedIn
-			BaseDelay:         time.Second * 15,
-			MaxJitter:         time.Second * 20,
+			RequestsPerMinute: 15,
+			BaseDelay:         time.Second * 1,
+			MaxJitter:         time.Second * 1,
 		},
 	}
 
@@ -63,70 +63,10 @@ func (s *LinkedInScraper) URL() string {
 func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	listings := []models.Listing{}
 
-	MAX_JOBS_TO_SCRAPE := 5
-
-	searchParams := map[string]string{
-		"keywords": `(graduate OR junior OR intern) (
-            "software engineer" OR 
-            "software developer" OR 
-            "data engineer" OR 
-            "data scientist" OR 
-            "machine learning" OR 
-            "security engineer" OR 
-            "cyber security" OR 
-            "devops engineer" OR 
-            "site reliability engineer" OR 
-            "sre" OR 
-            "full stack" OR 
-            "frontend engineer" OR 
-            "backend engineer" OR 
-            "cloud engineer" OR 
-            "systems engineer" OR
-            "quantitative trader" OR 
-            "quant developer" OR 
-            "algorithmic trading" OR 
-            "quant analyst" OR 
-            "quantitative analyst" OR 
-            "trading systems"
-        )`,
-		"location": "Australia",
-		"distance": "50",
-		"f_E":      "1,2",      // 1=Internship, 2=Entry level
-		"f_JT":     "F,I",      // F=Full-time, I=Internship
-		"f_TPR":    "r2592000", // Past month
-		"start":    "0",
-	}
-
-	searchURL := buildSearchURL(s.baseURL, searchParams)
-	//utils.Log("Searching for jobs with this URL: %s", searchURL)
-
-	req, err := http.NewRequest("GET", searchURL, nil)
+	// First, get all jobs through pagination
+	jobs, err := s.getAllJobs(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := s.unblocker.MakeRequest(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch search results: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Save search results response
-	if err := s.saveResponse(resp, "search"); err != nil {
-		utils.Error("Failed to save search response: %v", err)
-	}
-
-	//utils.Log("Got search response with status: %d", resp.StatusCode)
-
-	jobs, err := parseSearchResults(resp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse search results: %w", err)
-	}
-
-	if MAX_JOBS_TO_SCRAPE > 0 && len(jobs) > MAX_JOBS_TO_SCRAPE {
-		jobs = jobs[:MAX_JOBS_TO_SCRAPE]
-		utils.Log("Trimming job results to %d", MAX_JOBS_TO_SCRAPE)
-
+		return nil, fmt.Errorf("failed to get all jobs: %w", err)
 	}
 
 	utils.Log("Found %d jobs in search results. Starting to parse individual jobs. \n", len(jobs))
@@ -143,6 +83,92 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 
 	utils.Log("Finished scraping. Found %d valid listings", len(listings))
 	return listings, nil
+}
+
+func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
+	var allJobs []Job
+	start := 0
+	maxJobs := 100
+
+	for {
+		utils.Log("Fetching jobs page starting at offset %d", start)
+
+		searchParams := map[string]string{
+			"keywords": `(graduate OR junior OR intern) (
+                "software engineer" OR 
+                "software developer" OR 
+                "data engineer" OR 
+                "data scientist" OR 
+                "machine learning" OR 
+                "security engineer" OR 
+                "cyber security" OR 
+                "devops engineer" OR 
+                "site reliability engineer" OR 
+                "sre" OR 
+                "full stack" OR 
+                "frontend engineer" OR 
+                "backend engineer" OR 
+                "cloud engineer" OR 
+                "systems engineer" OR
+                "quantitative trader" OR 
+                "quant developer" OR 
+                "algorithmic trading" OR 
+                "quant analyst" OR 
+                "quantitative analyst" OR 
+                "trading systems"
+            )`,
+			"location": "Australia",
+			"distance": "50",
+			"f_E":      "1,2",      // 1=Internship, 2=Entry level
+			"f_JT":     "F,I",      // F=Full-time, I=Internship
+			"f_TPR":    "r2592000", // Past month
+			"start":    fmt.Sprintf("%d", start),
+		}
+
+		searchURL := buildSearchURL(s.baseURL, searchParams)
+
+		req, err := http.NewRequest("GET", searchURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %w", err)
+		}
+
+		resp, err := s.unblocker.MakeRequest(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch search results: %w", err)
+		}
+		defer resp.Body.Close()
+
+		// Save search results response
+		if err := s.saveResponse(resp, "search"); err != nil {
+			utils.Error("Failed to save search response: %v", err)
+		}
+
+		//utils.Log("Got search response with status: %d", resp.StatusCode)
+
+		jobs, err := parseSearchResults(resp)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse search results: %w", err)
+		}
+
+		// No more results
+		if len(jobs) == 0 {
+			break
+		}
+
+		allJobs = append(allJobs, jobs...)
+		utils.Log("Found %d jobs so far", len(allJobs))
+
+		// Check if we've hit our maximum
+		if maxJobs > 0 && len(allJobs) >= maxJobs {
+			allJobs = allJobs[:maxJobs]
+			break
+		}
+
+		// Prepare for next page
+		start += len(jobs)
+	}
+
+	return allJobs, nil
 }
 
 func (s *LinkedInScraper) saveResponse(resp *http.Response, prefix string) error {
