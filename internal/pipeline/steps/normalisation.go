@@ -2,7 +2,7 @@ package steps
 
 import (
 	"context"
-
+	"strings"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
@@ -21,18 +21,42 @@ func (s *NormalizationStep) Process(ctx context.Context, listings []models.Listi
 	normalized := make([]models.Listing, len(listings))
 	// process and insert listings
 
-	for i, listing := range listings {
-		normalizedListing, err := StandardiseStudyFields(listing)	
-		if err != nil {
-			utils.Error("Error in StandardiseStudyFields: %v", err)
+	for _, listing := range listings {
+		// Check if Title contains "eoi" or "eoy"
+		if strings.Contains(strings.ToLower(listing.Title), "eoi") || strings.Contains(strings.ToLower(listing.Title), "eoy") {
+			continue // Skip this listing entirely
 		}
 
-		normalizedListing, err = RemoveEmptyStrings(normalizedListing)
-		if err != nil {
-			utils.Error("Error in RemoveEmptyStrings: %v", err)
+		// Trim string fields
+		listing.Title = strings.TrimSpace(listing.Title)
+
+		if listing.Description != nil {
+			trimmedDescription := strings.TrimSpace(*listing.Description)
+			listing.Description = &trimmedDescription
 		}
 
-		normalized[i] = normalizedListing
+		if listing.ApplicationURL != nil {
+			trimmedApplicationURL := strings.TrimSpace(*listing.ApplicationURL)
+			listing.ApplicationURL = &trimmedApplicationURL
+		}
+
+
+		for j, sourceURL := range listing.SourceURLs {
+			listing.SourceURLs[j] = strings.TrimSpace(sourceURL)
+		}
+
+		// Filter out "..." from StudyFields
+		filteredStudyFields := []string{}
+		for _, studyField := range listing.StudyFields {
+			trimmedField := strings.TrimSpace(studyField)
+			if trimmedField != "..." {
+				filteredStudyFields = append(filteredStudyFields, trimmedField)
+			}
+		}
+		listing.StudyFields = filteredStudyFields
+
+		// Append the normalized listing to the result slice
+		normalized = append(normalized, listing)
 	}
 
 	return normalized, nil
