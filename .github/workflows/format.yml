@@ -1,8 +1,6 @@
 name: Go Format
 
 on:
-  # Run on all pushes to any branch
-  push:
   # Run on all pull requests
   pull_request:
 
