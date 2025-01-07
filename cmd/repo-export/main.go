@@ -20,6 +20,7 @@ type Config struct {
 
 var defaultIgnoredFiles = []string{
 	"cmd/repo-export/main.go",
+	"debug",
 	"go.sum",
 }
 
