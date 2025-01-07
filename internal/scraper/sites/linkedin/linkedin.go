@@ -68,7 +68,7 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 	utils.Log("Found %d jobs in search results. Starting to parse individual jobs. \n", len(jobs))
 
 	for i, job := range jobs {
-		utils.Log("Processing job %d/%d", i+1, len(jobs))
+		utils.Log("Processing job %d/%d with ID %s", i+1, len(jobs), job.ID)
 		listing, err := s.processJob(ctx, job)
 		if err != nil {
 			utils.Error("Failed to process job %s: %v", job.ID, err)
@@ -149,7 +149,6 @@ func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
 		}
 
 		allJobs = append(allJobs, jobs...)
-		utils.Log("Found %d jobs so far", len(allJobs))
 
 		// Check if we've hit our maximum
 		if maxJobs > 0 && len(allJobs) >= maxJobs {

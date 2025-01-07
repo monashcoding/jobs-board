@@ -28,27 +28,15 @@ func extractJobID(href string) string {
 	return ""
 }
 
-func convertJobType(linkedinType string) models.JobType {
-	switch strings.ToLower(linkedinType) {
-	case "full-time":
-		return models.FIRST_YEAR
-	case "internship":
-		return models.INTERN
-	default:
-		return models.UNKNOWN
-	}
-}
-
 func parseLocations(location string) []models.LocationType {
 	locations := []models.LocationType{}
 
 	// Simple mapping of common locations
+	// TODO: Expand this
 	if strings.Contains(location, "Melbourne") {
 		locations = append(locations, models.VIC)
 	} else if strings.Contains(location, "Sydney") {
 		locations = append(locations, models.NSW)
-	} else if strings.Contains(location, "Remote") {
-		locations = append(locations, models.REMOTE)
 	} else {
 		locations = append(locations, models.AUSTRALIA)
 	}

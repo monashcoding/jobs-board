@@ -61,7 +61,6 @@ func parseSearchResults(resp *http.Response) ([]Job, error) {
 
 func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listing, error) {
 	jobURL := fmt.Sprintf("%s/jobs/view/%s", s.baseURL, job.ID)
-	utils.Log("Fetching job details from: %s", jobURL)
 
 	req, err := http.NewRequest("GET", jobURL, nil)
 	if err != nil {
@@ -111,17 +110,17 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 	// Convert to our job model
 	listing := models.Listing{
 		Title:       job.Title,
-		Description: description,
+		Description: &description,
 		Company: models.Company{
 			Name:    job.Company,
-			Website: job.CompanyURL,
+			Website: &job.CompanyURL,
 		},
-		ApplicationURL: job.ApplyURL,
+		ApplicationURL: &job.ApplyURL,
 		SourceURLs:     []string{jobURL},
-		Type:           convertJobType(job.JobType),
+		Type:           nil, // TODO: Job type
 		Locations:      parseLocations(job.Location),
+		WFHStatus:      nil, // TODO: WFH Status
 		StudyFields:    nil,
-		StartDate:      time.Unix(0, 0).UTC(),
 		WorkingRights:  nil,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
