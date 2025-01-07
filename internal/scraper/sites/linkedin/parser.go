@@ -79,8 +79,6 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 		utils.Error("Failed to save job response: %v", err)
 	}
 
-	//utils.Log("Got job details response with status: %d", resp.StatusCode)
-
 	// Check if we got redirected to signup page
 	if strings.Contains(resp.Request.URL.Path, "/signup") {
 		return models.Listing{}, fmt.Errorf("redirected to signup page - possible detection")
@@ -112,10 +110,10 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 
 	// Convert to our job model
 	listing := models.Listing{
-		Title:       strings.TrimSpace(job.Title),
-		Description: strings.TrimSpace(description),
+		Title:       job.Title,
+		Description: description,
 		Company: models.Company{
-			Name:    strings.TrimSpace(job.Company),
+			Name:    job.Company,
 			Website: job.CompanyURL,
 		},
 		ApplicationURL: job.ApplyURL,
@@ -129,7 +127,5 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 		UpdatedAt:      time.Now(),
 	}
 
-	utils.Log("Found job with url " + jobURL)
-	utils.Log("Title: " + strings.TrimSpace(job.Title))
 	return listing, nil
 }

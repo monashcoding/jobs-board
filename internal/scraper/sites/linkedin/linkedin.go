@@ -19,12 +19,10 @@ type LinkedInScraper struct {
 }
 
 func NewLinkedInScraper() *LinkedInScraper {
-	// Configure unblocker with strict rate limiting for LinkedIn
 	config := unblocker.Config{
 		Features: unblocker.Features{
 			UseRateLimiting: true,
 			UseIPRotation:   true,
-			//UseBrowserProfiles: true,
 		},
 		BrightData: &unblocker.BrightDataConfig{
 			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
@@ -34,9 +32,8 @@ func NewLinkedInScraper() *LinkedInScraper {
 			UseLocalDNS: true,
 		},
 		Rate: &unblocker.RateLimitConfig{
-			RequestsPerMinute: 15,
-			BaseDelay:         time.Second * 1,
-			MaxJitter:         time.Second * 1,
+			BaseDelay: time.Second * 1,
+			MaxJitter: time.Second * 1,
 		},
 	}
 
@@ -63,7 +60,6 @@ func (s *LinkedInScraper) URL() string {
 func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	listings := []models.Listing{}
 
-	// First, get all jobs through pagination
 	jobs, err := s.getAllJobs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all jobs: %w", err)
@@ -81,7 +77,6 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 		listings = append(listings, listing)
 	}
 
-	utils.Log("Finished scraping. Found %d valid listings", len(listings))
 	return listings, nil
 }
 
@@ -143,8 +138,6 @@ func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
 			utils.Error("Failed to save search response: %v", err)
 		}
 
-		//utils.Log("Got search response with status: %d", resp.StatusCode)
-
 		jobs, err := parseSearchResults(resp)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse search results: %w", err)
@@ -194,6 +187,5 @@ func (s *LinkedInScraper) saveResponse(resp *http.Response, prefix string) error
 	// Important: Create new reader for resp.Body since we consumed it
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 
-	//utils.Log("Saved response to %s", filename)
 	return nil
 }

@@ -69,14 +69,13 @@ type CookieConfig struct {
 }
 
 // RateLimitConfig controls request timing and frequency. Common configurations:
-// - Aggressive: 60 rpm, 5s base delay, 2s jitter
-// - Moderate: 30 rpm, 10s base delay, 5s jitter
-// - Conservative: 10 rpm, 30s base delay, 10s jitter
+// - Aggressive: 5s base delay, 2s jitter
+// - Moderate: 10s base delay, 5s jitter
+// - Conservative: 30s base delay, 10s jitter
 type RateLimitConfig struct {
-	RequestsPerMinute int           // Maximum requests per minute
-	BurstSize         int           // Maximum burst size for requests
-	BaseDelay         time.Duration // Minimum delay between requests
-	MaxJitter         time.Duration // Random delay addition (0 to MaxJitter)
+	BurstSize int           // Maximum burst size for requests
+	BaseDelay time.Duration // Minimum delay between requests
+	MaxJitter time.Duration // Random delay addition (0 to MaxJitter)
 }
 
 // Feature interfaces
@@ -97,13 +96,11 @@ type CookieManager interface {
 
 type IPRotationManager interface {
 	GetProxy(ctx context.Context) (string, error)
-	ReportSuccess(ctx context.Context, proxyURL string) error
-	ReportFailure(ctx context.Context, proxyURL string) error
+	RotateProxy(ctx context.Context, proxyURL string) error
 }
 
 type RateLimitManager interface {
 	Wait(ctx context.Context) (time.Duration, error)
-	ReportRequest(ctx context.Context, domain string) error
 }
 
 // Service defines the main interface for the unblocker service

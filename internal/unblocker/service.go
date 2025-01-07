@@ -205,12 +205,6 @@ func (s *service) executeRequest(ctx context.Context, req *http.Request) (*http.
 	}
 
 	// Handle post-request tasks
-	if s.ipManager != nil {
-		s.ipManager.ReportSuccess(ctx, req.URL.String())
-	}
-	if s.rateManager != nil {
-		s.rateManager.ReportRequest(ctx, req.URL.Host)
-	}
 	if s.cookieManager != nil {
 		s.cookieManager.SetCookies(ctx, req.URL.Host, resp.Cookies())
 	}

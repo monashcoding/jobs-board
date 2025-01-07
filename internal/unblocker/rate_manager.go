@@ -11,22 +11,12 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
-type domainStats struct {
-	lastRequest time.Time
-	requests    int
-	window      time.Time
-}
-
 type rateManager struct {
 	config RateLimitConfig
-	stats  map[string]*domainStats
 	mu     sync.RWMutex
 }
 
 func newRateManager(config RateLimitConfig) RateLimitManager {
-	if config.RequestsPerMinute == 0 {
-		config.RequestsPerMinute = 30 // Default to 30 requests per minute
-	}
 	if config.BaseDelay == 0 {
 		config.BaseDelay = time.Second * 2
 	}
@@ -36,7 +26,6 @@ func newRateManager(config RateLimitConfig) RateLimitManager {
 
 	return &rateManager{
 		config: config,
-		stats:  make(map[string]*domainStats),
 	}
 }
 
@@ -55,37 +44,4 @@ func (m *rateManager) Wait(ctx context.Context) (time.Duration, error) {
 	case <-time.After(delay):
 		return delay, nil
 	}
-}
-
-func (m *rateManager) ReportRequest(ctx context.Context, domain string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	now := time.Now()
-	stats, exists := m.stats[domain]
-	if !exists {
-		stats = &domainStats{
-			window: now,
-		}
-		m.stats[domain] = stats
-	}
-
-	// Reset window if needed
-	if now.Sub(stats.window) >= time.Minute {
-		stats.window = now
-		stats.requests = 0
-	}
-
-	// Update stats
-	stats.requests++
-	stats.lastRequest = now
-
-	if stats.requests > m.config.RequestsPerMinute {
-		utils.Error("Rate limit exceeded for domain: %s", domain)
-	} else {
-		utils.Log("Request recorded for domain: %s (%d/%d this minute)",
-			domain, stats.requests, m.config.RequestsPerMinute)
-	}
-
-	return nil
 }

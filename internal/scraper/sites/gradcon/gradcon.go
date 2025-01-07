@@ -21,9 +21,8 @@ func NewGradconScraper() *GradconScraper {
 	// Configure unblocker
 	config := unblocker.Config{
 		Features: unblocker.Features{
-			UseRateLimiting:    true,
-			UseIPRotation:      true,
-			UseBrowserProfiles: true,
+			UseRateLimiting: true,
+			UseIPRotation:   true,
 		},
 		BrightData: &unblocker.BrightDataConfig{
 			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
@@ -33,9 +32,8 @@ func NewGradconScraper() *GradconScraper {
 			UseLocalDNS: true,
 		},
 		Rate: &unblocker.RateLimitConfig{
-			RequestsPerMinute: 30,
-			BaseDelay:         time.Second * 2,
-			MaxJitter:         time.Second,
+			BaseDelay: time.Second * 2,
+			MaxJitter: time.Second,
 		},
 	}
 

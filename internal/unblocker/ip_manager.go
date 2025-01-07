@@ -94,17 +94,12 @@ func (m *ipManager) GetProxy(ctx context.Context) (string, error) {
 	return proxyURL, nil
 }
 
-// ReportSuccess logs successful proxy usage
-func (m *ipManager) ReportSuccess(ctx context.Context, proxyURL string) error {
-	return nil
-}
-
-// ReportFailure handles proxy failures by invalidating the current session
-func (m *ipManager) ReportFailure(ctx context.Context, proxyURL string) error {
+// RotateProxy handles proxy failures by invalidating the current session
+func (m *ipManager) RotateProxy(ctx context.Context, proxyURL string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	utils.Log("Failed request with session: %s, rotating session", m.activeSession)
+	utils.Log("Rotating session: %s", m.activeSession)
 	m.activeSession = "" // Force new session on next GetProxy call
 	return nil
 }
