@@ -1,9 +1,9 @@
 package prosple
 
 import (
-	"testing"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
+	"testing"
 )
 
 // JobTypeConversionTestSuite provides common functionality for testing job type conversion
@@ -42,11 +42,11 @@ func TestJobTypeConversion(t *testing.T) {
 
 	// Define test cases with input job type and expected job type
 	testCases := []struct {
-		jobType        string
+		jobType         string
 		expectedJobType models.JobType
 	}{
 		{
-			jobType:        "Internship, Clerkship or Placement",
+			jobType:         "Internship, Clerkship or Placement",
 			expectedJobType: models.INTERN,
 		},
 	}
