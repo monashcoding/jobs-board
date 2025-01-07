@@ -9,7 +9,6 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 
-	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -20,14 +19,6 @@ type MongoDB struct {
 	client     *mongo.Client
 	database   *mongo.Database
 	collection *mongo.Collection
-}
-
-func init() {
-	utils.Log("Loading environment variables from .env file...")
-	if err := godotenv.Load(); err != nil {
-		utils.Fatal(".env file not found: %v\n", err)
-	}
-	utils.Log("Environment variables loaded.")
 }
 
 // NewMongoDB creates a new MongoDB instance

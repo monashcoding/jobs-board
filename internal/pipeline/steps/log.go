@@ -2,9 +2,10 @@ package steps
 
 import (
 	"context"
+	"strings"
+
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
-	"strings"
 )
 
 type LogStep struct {
@@ -41,7 +42,7 @@ func (s *LogStep) Process(ctx context.Context, listings []models.Listing) ([]mod
 		}
 
 		// Create compact string for study fields
-		fields := strings.Join(compactStringSlice(studyFieldsToStrings(listing.StudyFields)), "/")
+		fields := strings.Join(compactStringSlice(listing.StudyFields), "/")
 		if fields == "" {
 			fields = "Any"
 		}
@@ -51,11 +52,11 @@ func (s *LogStep) Process(ctx context.Context, listings []models.Listing) ([]mod
 			listing.ID.Hex()[:8],
 			truncateString(listing.Title, 40),
 			company,
-			listing.Type,
+			*listing.Type,
 			locations,
 			fields,
 			closeDate,
-			truncateString(listing.ApplicationURL, 40),
+			truncateString(*listing.ApplicationURL, 40),
 		)
 	}
 	return listings, nil
@@ -81,14 +82,6 @@ func locationsToStrings(locs []models.LocationType) []string {
 	result := make([]string, len(locs))
 	for i, loc := range locs {
 		result[i] = string(loc)
-	}
-	return result
-}
-
-func studyFieldsToStrings(fields []models.StudyField) []string {
-	result := make([]string, len(fields))
-	for i, field := range fields {
-		result[i] = string(field)
 	}
 	return result
 }

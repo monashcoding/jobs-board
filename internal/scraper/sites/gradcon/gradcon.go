@@ -1,50 +1,22 @@
-package gradcon
+package sites
 
 import (
 	"context"
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"os"
-	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 type GradconScraper struct {
 	*scraper.CollyScraper
-	unblocker unblocker.Service
 }
 
 func NewGradconScraper() *GradconScraper {
-	// Configure unblocker
-	config := unblocker.Config{
-		Features: unblocker.Features{
-			UseRateLimiting: true,
-			UseIPRotation:   true,
-		},
-		BrightData: &unblocker.BrightDataConfig{
-			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
-			ZoneName:    os.Getenv("BRIGHTDATA_ZONE_NAME"),
-			Password:    os.Getenv("BRIGHTDATA_PASSWORD"),
-			Country:     "au",
-			UseLocalDNS: true,
-		},
-		Rate: &unblocker.RateLimitConfig{
-			BaseDelay: time.Second * 2,
-			MaxJitter: time.Second,
-		},
-	}
-
-	unblockerService, err := unblocker.NewService(config)
-	if err != nil {
-		utils.Error("Failed to initialize unblocker: %v", err)
-		return nil
-	}
-
 	return &GradconScraper{
-		unblocker:    unblockerService,
 		CollyScraper: scraper.NewCollyScraper(),
 	}
 }
@@ -65,17 +37,16 @@ func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Li
 	gradConnectApiUrl := s.API_URL()
 	var listings []models.Listing
 
-	result, err := SendAPIRequest(gradConnectApiUrl, pageSize, offset, s.unblocker)
-
+	result, err := gradcon.SendAPIRequest(gradConnectApiUrl, pageSize, offset)
 	if err != nil {
-		utils.Error("Failed to send API Request")
+		// return listings, err
 	}
 
 	for _, item := range *result {
-		gradConnectListings, err := GradConnectToMPLOY(item, s.URL())
+		gradConnectListings, err := gradcon.GradConnectToMPLOY(item, s.URL())
 
 		if err != nil {
-			fmt.Printf("Error converting opportunity to model: %v\n", err)
+			utils.Warn("Error converting opportunity to model: %v", err)
 			continue
 		}
 		listings = append(listings, gradConnectListings...)
@@ -85,13 +56,13 @@ func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Li
 }
 
 func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
-	pages := 2     // Number of pages to scrape
-	pageSize := 50 // Number of listings per page
+	pages := 10    // Number of pages to scrape
+	pageSize := 20 // Number of listings per page
 
 	listings := []models.Listing{}
 
 	// Scrape all listings
-	scrapeAll := false
+	scrapeAll := os.Getenv("ENVIRONMENT") == "PRODUCTION"
 	if scrapeAll {
 		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
 		for i := 0; ; i++ {
@@ -100,7 +71,8 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 			newListings, err := s.PerformAPIScrape(i*pageSize, pageSize)
 
 			if err != nil {
-				return nil, fmt.Errorf("failed to scrape GradConnect: %v", err)
+				listings = append(listings, newListings...)
+				return listings, nil
 			}
 
 			if len(newListings) != pageSize {
