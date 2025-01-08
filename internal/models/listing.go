@@ -13,7 +13,7 @@ const (
 	FIRST_YEAR JobType = "FIRST_YEAR"
 	INTERN     JobType = "INTERN"
 	GRADUATE   JobType = "GRADUATE"
-	OTHER			 JobType = "OTHER"
+	OTHER	   JobType = "OTHER"
 )
 
 type LocationType string
@@ -63,7 +63,7 @@ type Listing struct {
 	Description    *string             `bson:"description" json:"description"`
 	Company        Company            `bson:"company" json:"company"`
 	ApplicationURL *string             `bson:"application_url" json:"application_url"`
-	WFHStatus			 *WFHStatus         `bson:"wfh_status" json:"wfh_status"`
+	WFHStatus	   *WFHStatus         `bson:"wfh_status" json:"wfh_status"`
 	SourceURLs     []string           `bson:"source_urls" json:"source_urls"`
 	Type           *JobType           `bson:"type" json:"type"`
 	CloseDate      *time.Time         `bson:"close_date,omitempty" json:"close_date"`

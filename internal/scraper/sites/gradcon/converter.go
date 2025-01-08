@@ -110,26 +110,49 @@ func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]mode
 }
 
 func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType, error) {
-	// TODO:: Extend this to match working right type names to our Enum
+	// Standardise the Gradconnection Job type to our Job type enums
 	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
 	
-	if jobType, ok := campaign.JobType.(string); ok {
-    // Use jobType as string
-		return models.JobType(jobType), nil
+	// Define the mapping between GradConnect job types and MPLOY job types
+	jobTypeMapping := map[string]models.JobType{
+		"Graduate Jobs":         models.GRADUATE,
+		"Internships":           models.INTERN,
+		"Entry Level Jobs":      models.GRADUATE,
+		"Events":                models.OTHER,
+		"Scholarships":          models.OTHER,
+		"Casual Jobs":           models.OTHER,
+		"Cadetships":            models.INTERN,
+		"Alumni Jobs":           models.OTHER,
+		"Clerkships":            models.INTERN,
+		"Part Time Student Jobs": models.OTHER,
 	}
 
-	if jobTypeMap, ok := campaign.JobType.(map[string]interface{}); ok {
-    // Check if both 'id' and 'name' exist and are strings
-    name, nameOk := jobTypeMap["name"].(string)
-    _, idOk := jobTypeMap["id"].(string)
-    
-    if !nameOk || !idOk {
-        return "", fmt.Errorf("job_type map missing required string fields id and/or name")
-    }
-    
-    // Now safe to use name and id
-    return models.JobType(name), nil
-}
+	// Check if JobType is a string
+	if jobType, ok := campaign.JobType.(string); ok {
+		// Map the string to the appropriate MPLOY job type
+		if mappedJobType, exists := jobTypeMapping[jobType]; exists {
+			return mappedJobType, nil
+		}
+		return models.JobType(""), fmt.Errorf("unknown job type: %s", jobType)
+	}
 
+	// Check if JobType is a map and extract the "name" field
+	if jobTypeMap, ok := campaign.JobType.(map[string]interface{}); ok {
+		// Check if both 'id' and 'name' exist and are strings
+		name, nameOk := jobTypeMap["name"].(string)
+		_, idOk := jobTypeMap["id"].(string)
+
+		if !nameOk || !idOk {
+			return "", fmt.Errorf("job_type map missing required string fields id and/or name")
+		}
+
+		// Map the "name" field to the appropriate MPLOY job type
+		if mappedJobType, exists := jobTypeMapping[name]; exists {
+			return mappedJobType, nil
+		}
+		return models.JobType(""), fmt.Errorf("unknown job type name: %s", name)
+	}
+
+	// Return error if JobType is not valid
 	return models.JobType(""), fmt.Errorf("job type is not a valid string or object: %v", campaign.JobType)
 }
