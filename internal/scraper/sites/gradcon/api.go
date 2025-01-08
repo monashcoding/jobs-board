@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"io"
 	"log"
 	"net/http"
 	"strconv"
 
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
@@ -72,7 +72,7 @@ func SendAPIRequest(url string, limit int, offset int, unblocker unblocker.Servi
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		utils.Fatal("Error reading response:", err)
+		utils.Fatal("Error reading response: %v", err)
 	}
 
 	var result APIResponse
