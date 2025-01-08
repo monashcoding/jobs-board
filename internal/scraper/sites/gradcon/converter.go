@@ -101,11 +101,32 @@ func GetGradConCloseDate(campaign GradConnectCampaign) time.Time {
 func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]models.WorkingRight, error) {
 	// TODO:: Extend this to match working right type names to our Enum
 	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
-
-	workingRights := []models.WorkingRight{}
-	for _, workRight := range campaign.WorkRights {
-		workingRights = append(workingRights, models.WorkingRight(workRight))
+	
+	// Define the mapping between GradConnect work rights and MPLOY work rights
+	workRightMapping := map[string]models.WorkingRight{
+		"Australian Permanent Resident":         models.AUS_PR,
+		"Australian Citizen":                    models.AUS_CITIZEN,
+		"Australian Working Visa":               models.WORK_VISA,
+		"Australian Bridging Visa":              models.WORK_VISA,
+		"Australian Student Visa":               models.INTERNATIONAL,
+		"Australian Skilled Migration Visa (485)": models.WORK_VISA,
+		"New Zealand Citizen":                   models.NZ_CITIZEN,
 	}
+
+	// Initialize the result array
+	workingRights := []models.WorkingRight{}
+
+	// Map each work right from the campaign
+	for _, workRight := range campaign.WorkRights {
+		// Check if the work right exists in the mapping
+		if mappedWorkRight, exists := workRightMapping[workRight]; exists {
+			workingRights = append(workingRights, mappedWorkRight)
+		} else {
+			// Map unknown work rights to OTHER_RIGHTS
+			workingRights = append(workingRights, models.OTHER_RIGHTS)
+		}
+	}
+
 	return workingRights, nil
 }
 
@@ -127,31 +148,31 @@ func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType,
 		"Part Time Student Jobs": models.OTHER,
 	}
 
-	// Check if JobType is a string
 	if jobType, ok := campaign.JobType.(string); ok {
 		// Map the string to the appropriate MPLOY job type
 		if mappedJobType, exists := jobTypeMapping[jobType]; exists {
 			return mappedJobType, nil
 		}
-		return models.JobType(""), fmt.Errorf("unknown job type: %s", jobType)
+		// Default to OTHER for unknown job types
+		return models.OTHER, nil
 	}
-
-	// Check if JobType is a map and extract the "name" field
+	
 	if jobTypeMap, ok := campaign.JobType.(map[string]interface{}); ok {
 		// Check if both 'id' and 'name' exist and are strings
 		name, nameOk := jobTypeMap["name"].(string)
 		_, idOk := jobTypeMap["id"].(string)
-
+	
 		if !nameOk || !idOk {
-			return "", fmt.Errorf("job_type map missing required string fields id and/or name")
+			return models.OTHER, fmt.Errorf("job_type map missing required string fields id and/or name")
 		}
-
+	
 		// Map the "name" field to the appropriate MPLOY job type
 		if mappedJobType, exists := jobTypeMapping[name]; exists {
 			return mappedJobType, nil
 		}
-		return models.JobType(""), fmt.Errorf("unknown job type name: %s", name)
-	}
+		// Default to OTHER for unknown job types
+		return models.OTHER, nil
+	}	
 
 	// Return error if JobType is not valid
 	return models.JobType(""), fmt.Errorf("job type is not a valid string or object: %v", campaign.JobType)
