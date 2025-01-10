@@ -2,8 +2,10 @@ package prosple
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"io"
 	"net/http"
 
@@ -69,13 +71,11 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-func SendGraphQLQuery(url string, query string, variables map[string]interface{}) (*GraphQLResponse, error) {
+func SendGraphQLQuery(url string, query string, variables map[string]interface{}, unblocker unblocker.Service) (*GraphQLResponse, error) {
 	requestBody := GraphQLRequest{
 		Query:     query,
 		Variables: variables,
 	}
-
-	utils.Log("Sending GraphQL request [...]")
 
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
@@ -91,8 +91,8 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// Use unblocker instead of http.Client
+	resp, err := unblocker.MakeRequest(context.Background(), req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %v", err)
 	}
@@ -107,7 +107,7 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 		return nil, fmt.Errorf("HTTP error: %s, %v", resp.Status, string(body))
 	}
 
-	utils.Log("GraphQL response successfully received [\u2713]")
+	utils.Success("GraphQL response received.")
 
 	var graphqlResp GraphQLResponse
 	if err := json.Unmarshal(body, &graphqlResp); err != nil {
@@ -118,7 +118,7 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 		return nil, fmt.Errorf("GraphQL error: %v", graphqlResp.Errors)
 	}
 
-	utils.Log("Reponse body successfully parsed [\u2713]")
+	utils.Success("Parsed %d jobs.", len(graphqlResp.Data.OpportunitiesSearch.Opportunities))
 
 	return &graphqlResp, nil
 }
@@ -156,11 +156,11 @@ func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
 				},
 			},
 			"selectedWorkRightsType": []map[string]interface{}{
-				{ "id": "29059" }, // 29059 = Australian Citizen
-				{ "id": "29060" }, // 29060 = Australian Permanent Resident
-				{ "id": "29061" }, // 29061 = International Student/Graduate Visa
-				{ "id": "29062" }, // 29062 = Australian Work Visa (All Other)
-				{ "id": "29063" }, // 29063 = Visa Sponsorship Included
+				{"id": "29059"}, // 29059 = Australian Citizen
+				{"id": "29060"}, // 29060 = Australian Permanent Resident
+				{"id": "29061"}, // 29061 = International Student/Graduate Visa
+				{"id": "29062"}, // 29062 = Australian Work Visa (All Other)
+				{"id": "29063"}, // 29063 = Visa Sponsorship Included
 			},
 		},
 	}
@@ -202,5 +202,3 @@ func GetGraphQlQuery() string {
     }
   }`
 }
-
-

@@ -6,32 +6,23 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 )
 
-var devMode bool
+var LogHandler func(string)
 
-func init() {
-    devModeStr := os.Getenv("DEV_MODE")
-    if devModeStr == "" {
-        devMode = true
-        return
-    }
-    var err error
-    devMode, err = strconv.ParseBool(devModeStr)
-    if err != nil {
-        devMode = true
-    }
+// SetLogHandler sets a function to be called with each log message
+func SetLogHandler(handler func(string)) {
+	LogHandler = handler
 }
 
 // Log prints a standard log message with optional formatting
 func Log(format string, args ...interface{}) {
-    if devMode {
-        message := fmt.Sprintf(format, args...)
-        logWithOptionalLevel(message, "", 2, "\033[0m") // Reset
-    }
+	if os.Getenv("ENVIRONMENT") == "DEVELOPMENT" {
+		message := fmt.Sprintf(format, args...)
+		logWithOptionalLevel(message, "", 2, "\033[0m") // Reset
+	}
 }
 
 // Error logs a message with ERROR level and optional formatting
@@ -42,10 +33,10 @@ func Error(format string, args ...interface{}) {
 
 // Debug logs a message with DEBUG level and optional formatting
 func Debug(format string, args ...interface{}) {
-    if devMode {
-        message := fmt.Sprintf(format, args...)
-        logWithOptionalLevel(message, "DEBUG", 2, "\033[34m") // Blue
-    }
+	if os.Getenv("ENVIRONMENT") == "DEVELOPMENT" {
+		message := fmt.Sprintf(format, args...)
+		logWithOptionalLevel(message, "DEBUG", 2, "\033[34m") // Blue
+	}
 }
 
 // Warn logs a message with WARN level and a [!] prefix
@@ -86,9 +77,17 @@ func logWithOptionalLevel(message string, level string, skip int, color string) 
 	timestamp := time.Now().Format("15:04:05")
 	resetColor := "\033[0m"
 
+	var logMessage string
 	if level != "" {
-		fmt.Printf("%s[%s] [%s %s] [%s] %s\n", color, level, functionName, timestamp, message, resetColor)
+		logMessage = fmt.Sprintf("%s[%s] [%s %s] [%s] %s\n", color, level, functionName, timestamp, message, resetColor)
 	} else {
-		fmt.Printf("%s[%s %s] %s%s\n", color, functionName, timestamp, message, resetColor)
+		logMessage = fmt.Sprintf("%s[%s %s] %s%s\n", color, functionName, timestamp, message, resetColor)
+	}
+
+	fmt.Print(logMessage)
+
+	// Call the log handler if set
+	if LogHandler != nil {
+		LogHandler(logMessage)
 	}
 }

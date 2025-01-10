@@ -22,7 +22,7 @@ func (s *NormalizationStep) Process(ctx context.Context, listings []models.Listi
 	// process and insert listings
 
 	for i, listing := range listings {
-		normalizedListing, err := StandardiseStudyFields(listing)	
+		normalizedListing, err := StandardiseStudyFields(listing)
 		if err != nil {
 			utils.Error("Error in StandardiseStudyFields: %v", err)
 		}
@@ -43,10 +43,8 @@ func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
 	// Related Ticket (https://www.notion.so/monashcoding/Pipeline-Normalisation-Standardise-Study-Field-Strings-1591e0829dd880a0abcbd9a8ce13c67c)
 	utils.Log("Add your own logs")
 
-
 	return listing, nil
 }
-
 
 func RemoveEmptyStrings(listing models.Listing) (models.Listing, error) {
 	// Remove empty strings
