@@ -2,40 +2,42 @@ package steps
 
 import (
 	"context"
+	"strings"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
-type NormalizationStep struct{}
+type NormalisationStep struct{}
 
-func NewNormalizationStep() *NormalizationStep {
-	return &NormalizationStep{}
+func NewNormalisationStep() *NormalisationStep {
+	return &NormalisationStep{}
 }
 
-func (s *NormalizationStep) Name() string {
-	return "Normalization"
+func (s *NormalisationStep) Name() string {
+	return "Normalisation"
 }
 
-func (s *NormalizationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
-	normalized := make([]models.Listing, len(listings))
+func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	normalised := make([]models.Listing, len(listings))
 	// process and insert listings
 
-	for i, listing := range listings {
-		normalizedListing, err := StandardiseStudyFields(listing)
-		if err != nil {
-			utils.Error("Error in StandardiseStudyFields: %v", err)
+	for _, listing := range listings {
+		// Check if Title contains "eoi" or "eoy"
+		if strings.Contains(strings.ToLower(listing.Title), "eoi") || strings.Contains(strings.ToLower(listing.Title), "eoy") {
+			continue // Skip this listing entirely
 		}
 
-		normalizedListing, err = RemoveEmptyStrings(normalizedListing)
+		listing, err := StandardiseStudyFields(listing)
 		if err != nil {
-			utils.Error("Error in RemoveEmptyStrings: %v", err)
+			utils.Warn("Failed to standardise study fields: %v", err)
 		}
 
-		normalized[i] = normalizedListing
+		// Append the normalised listing to the result slice
+		normalised = append(normalised, listing)
 	}
 
-	return normalized, nil
+	return normalised, nil
 }
 
 func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
@@ -49,7 +51,32 @@ func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
 func RemoveEmptyStrings(listing models.Listing) (models.Listing, error) {
 	// Remove empty strings
 	// Related Ticket (https://www.notion.so/monashcoding/1171e0829dd88010a8acdab2a23428e7?v=11c1e0829dd88085a07e000c9515dfca&p=1591e0829dd880528ca3ed948c02f303&pm=s)
-	utils.Log("Add your own logs")
+	// Trim string fields
+	listing.Title = strings.TrimSpace(listing.Title)
+
+	if listing.Description != nil {
+		trimmedDescription := strings.TrimSpace(*listing.Description)
+		listing.Description = &trimmedDescription
+	}
+
+	if listing.ApplicationURL != nil {
+		trimmedApplicationURL := strings.TrimSpace(*listing.ApplicationURL)
+		listing.ApplicationURL = &trimmedApplicationURL
+	}
+
+	for j, sourceURL := range listing.SourceURLs {
+		listing.SourceURLs[j] = strings.TrimSpace(sourceURL)
+	}
+
+	// Filter out "..." from StudyFields
+	filteredStudyFields := []string{}
+	for _, studyField := range listing.StudyFields {
+		trimmedField := strings.TrimSpace(studyField)
+		if trimmedField != "..." {
+			filteredStudyFields = append(filteredStudyFields, trimmedField)
+		}
+	}
+	listing.StudyFields = filteredStudyFields
 
 	return listing, nil
 }
