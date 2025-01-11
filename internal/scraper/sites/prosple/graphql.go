@@ -194,6 +194,7 @@ func GetGraphQlQuery() string {
       }
       parentEmployer{
         title
+				detailPageURL
       }
       workingRights{
         children{
