@@ -19,8 +19,7 @@ func (s *NormalisationStep) Name() string {
 }
 
 func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
-	normalised := make([]models.Listing, len(listings))
-	// process and insert listings
+	normalised := []models.Listing{} // process and insert listings
 
 	for _, listing := range listings {
 		// Check if Title contains "eoi" or "eoy"
@@ -28,9 +27,14 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 			continue // Skip this listing entirely
 		}
 
-		listing, err := StandardiseStudyFields(listing)
+		listing, err := RemoveEmptyStrings(listing)
 		if err != nil {
-			utils.Warn("Failed to standardise study fields: %v", err)
+			utils.Warn("Failed to remove empty strings: %v", err)
+		}
+
+		listing, err = StandardiseStudyFields(listing)
+		if err != nil {
+			utils.Warn("Failed to Standardise Study Fields: %v", err)
 		}
 
 		// Append the normalised listing to the result slice
