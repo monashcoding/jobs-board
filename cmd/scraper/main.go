@@ -42,14 +42,20 @@ func main() {
 }
 
 func ScheduleScraper() {
-	now := time.Now()
+	// Set up Melbourne location
+	melb, err := time.LoadLocation("Australia/Melbourne")
+	if err != nil {
+		utils.Fatal("Failed to load Melbourne timezone: %v", err)
+	}
 
-	// Calculate next run time
-	scheduledHour := 00
-	scheduledMinute := 00
+	now := time.Now().In(melb)
+
+	// Set scheduled time to 21:05 (9:05 PM)
+	scheduledHour := 21
+	scheduledMinute := 5
 	scheduledDay := now.Day()
 
-	// if hour and minute is before now, schedule for next day
+	// If current time is past 21:05, schedule for next day
 	if scheduledHour < now.Hour() || (scheduledHour == now.Hour() && scheduledMinute < now.Minute()) {
 		scheduledDay = now.Day() + 1
 	}
@@ -62,10 +68,10 @@ func ScheduleScraper() {
 		scheduledMinute, // minute
 		0,               // second
 		0,               // nanosecond
-		now.Location(),  // location
+		melb,            // location (Melbourne)
 	)
 
-	utils.Log("Next run at %s", nextRun.String())
+	utils.Log("Next run at %s Melbourne time", nextRun.Format("2006-01-02 15:04:05 MST"))
 
 	duration := nextRun.Sub(now)
 
