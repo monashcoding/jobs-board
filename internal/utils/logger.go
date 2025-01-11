@@ -19,10 +19,8 @@ func SetLogHandler(handler func(string)) {
 
 // Log prints a standard log message with optional formatting
 func Log(format string, args ...interface{}) {
-	if os.Getenv("ENVIRONMENT") == "DEVELOPMENT" {
-		message := fmt.Sprintf(format, args...)
-		logWithOptionalLevel(message, "", 2, "\033[0m") // Reset
-	}
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel(message, "", 2, "\033[0m") // Reset
 }
 
 // Error logs a message with ERROR level and optional formatting

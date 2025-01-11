@@ -71,7 +71,7 @@ func ScheduleScraper() {
 		melb,            // location (Melbourne)
 	)
 
-	utils.Log("Next run at %s Melbourne time", nextRun.Format("2006-01-02 15:04:05 MST"))
+	utils.Success("Next run scheduled at %s Melbourne time", nextRun.Format("2006-01-02 15:04:05 MST"))
 
 	duration := nextRun.Sub(now)
 
