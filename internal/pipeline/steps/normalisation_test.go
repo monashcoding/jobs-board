@@ -1,13 +1,14 @@
 package steps
 
 import (
-	pipelinetesting "github.com/monashcoding/mploy-golang-core/internal/pipeline/testing"
 	"testing"
+
+	pipelinetesting "github.com/monashcoding/mploy-golang-core/internal/pipeline/testing"
 )
 
 func TestNormalizationStep_Process(t *testing.T) {
-	step := NewNormalizationStep()
-	suite := pipelinetesting.NewPipelineStepTestSuite(t, step, "testdata/normalization")
+	step := NewNormalisationStep()
+	suite := pipelinetesting.NewPipelineStepTestSuite(t, step, "testdata/normalisation")
 
 	testCases := []pipelinetesting.TestCase{
 		{

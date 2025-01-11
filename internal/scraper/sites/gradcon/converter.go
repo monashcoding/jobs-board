@@ -123,7 +123,7 @@ func GetGradConCloseDate(campaign GradConnectCampaign) time.Time {
 	parsedEndDate, err := time.Parse(time.RFC3339, endDate)
 
 	if err != nil {
-		utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
+		//utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
 
 		return defaultDate
 	} else {
@@ -165,8 +165,7 @@ func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]mode
 
 func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType, error) {
 	// Standardise the Gradconnection Job type to our Job type enums
-	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
-	
+	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)	
 	// Define the mapping between GradConnect job types and MPLOY job types
 	jobTypeMapping := map[string]models.JobType{
 		"Graduate Jobs":         models.GRADUATE,
@@ -179,7 +178,6 @@ func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType,
 		"Alumni Jobs":           models.OTHER,
 		"Clerkships":            models.INTERN,
 		"Part Time Student Jobs": models.OTHER,
-	}
 
 	if jobType, ok := campaign.JobType.(string); ok {
 		// Map the string to the appropriate MPLOY job type

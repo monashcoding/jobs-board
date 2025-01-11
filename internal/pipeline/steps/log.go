@@ -52,7 +52,7 @@ func (s *LogStep) Process(ctx context.Context, listings []models.Listing) ([]mod
 			listing.ID.Hex()[:8],
 			truncateString(listing.Title, 40),
 			company,
-			*listing.Type,
+			*listing.Type, // TODO: This line causes SEGFAULT
 			locations,
 			fields,
 			closeDate,

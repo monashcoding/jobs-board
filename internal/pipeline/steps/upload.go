@@ -25,7 +25,7 @@ func (s *UploadStep) Process(ctx context.Context, listings []models.Listing) ([]
 	| Naive sync strategy [To be replaced after MVP]        		  |
 	| 1. Delete all listings from DB                              |
 	| 2. Insert all listings from pipeline                        |
-	| 						                                                |	
+	| 						                                                |
 	| In future, need to think about a smarter way to handle      |
 	| updates and deletions. (How do we know a listing is expired |
 	| or updated?)                                                |
@@ -59,6 +59,6 @@ func (s *UploadStep) Process(ctx context.Context, listings []models.Listing) ([]
 	}
 
 	utils.Log("Database Contains %d Listings", len(dbListings))
-	
+
 	return dbListings, nil
 }
