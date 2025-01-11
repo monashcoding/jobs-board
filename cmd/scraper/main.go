@@ -42,13 +42,9 @@ func main() {
 }
 
 func ScheduleScraper() {
-	// Set up Melbourne location
-	melb, err := time.LoadLocation("Australia/Melbourne")
-	if err != nil {
-		utils.Fatal("Failed to load Melbourne timezone: %v", err)
-	}
-
-	now := time.Now().In(melb)
+	// Melbourne is UTC+10/+11 (depending on daylight savings)
+	melbOffset := 11 * time.Hour
+	now := time.Now().UTC().Add(melbOffset)
 
 	// Set scheduled time to 21:05 (9:05 PM)
 	scheduledHour := 21
@@ -68,12 +64,12 @@ func ScheduleScraper() {
 		scheduledMinute, // minute
 		0,               // second
 		0,               // nanosecond
-		melb,            // location (Melbourne)
-	)
+		time.UTC,        // location
+	).Add(melbOffset)
 
-	utils.Success("Next run scheduled at %s Melbourne time", nextRun.Format("2006-01-02 15:04:05 MST"))
+	utils.Log("Next run at %s (Melbourne time)", nextRun.Format("2006-01-02 15:04:05"))
 
-	duration := nextRun.Sub(now)
+	duration := nextRun.Sub(time.Now().UTC().Add(melbOffset))
 
 	// Create ticker for daily runs
 	ticker := time.NewTicker(24 * time.Hour)
