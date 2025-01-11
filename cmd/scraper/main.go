@@ -42,18 +42,21 @@ func main() {
 }
 
 func ScheduleScraper() {
-	// Melbourne is UTC+10/+11 (depending on daylight savings)
-	melbOffset := 11 * time.Hour
-	now := time.Now().UTC().Add(melbOffset)
+	now := time.Now().UTC()
 
-	// Set scheduled time to 21:05 (9:05 PM)
-	scheduledHour := 21
+	// Calculate next run time (xx:05 of the next hour)
 	scheduledMinute := 5
+	scheduledHour := now.Hour()
 	scheduledDay := now.Day()
 
-	// If current time is past 21:05, schedule for next day
-	if scheduledHour < now.Hour() || (scheduledHour == now.Hour() && scheduledMinute < now.Minute()) {
-		scheduledDay = now.Day() + 1
+	// If we're past the 5th minute of this hour, schedule for next hour
+	if now.Minute() >= scheduledMinute {
+		scheduledHour++
+		// If we're scheduling past midnight
+		if scheduledHour >= 24 {
+			scheduledHour = 0
+			scheduledDay++
+		}
 	}
 
 	nextRun := time.Date(
@@ -65,14 +68,14 @@ func ScheduleScraper() {
 		0,               // second
 		0,               // nanosecond
 		time.UTC,        // location
-	).Add(melbOffset)
+	)
 
-	utils.Log("Next run at %s (Melbourne time)", nextRun.Format("2006-01-02 15:04:05"))
+	utils.Log("Next run at %s UTC", nextRun.Format("2006-01-02 15:04:05 MST"))
 
-	duration := nextRun.Sub(time.Now().UTC().Add(melbOffset))
+	duration := nextRun.Sub(now)
 
-	// Create ticker for daily runs
-	ticker := time.NewTicker(24 * time.Hour)
+	// Create ticker for hourly runs
+	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
 	// First run after initial delay
@@ -81,6 +84,7 @@ func ScheduleScraper() {
 
 	// Subsequent runs
 	for range ticker.C {
+		utils.Log("Starting scheduled scraper run at %s UTC", time.Now().UTC().Format("2006-01-02 15:04:05 MST"))
 		RunScraper()
 	}
 }
