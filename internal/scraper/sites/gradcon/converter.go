@@ -178,7 +178,8 @@ func GradConJobTypeToMPLOYJobType(campaign GradConnectCampaign) (models.JobType,
 		"Alumni Jobs":           models.OTHER,
 		"Clerkships":            models.INTERN,
 		"Part Time Student Jobs": models.OTHER,
-
+	}
+	
 	if jobType, ok := campaign.JobType.(string); ok {
 		// Map the string to the appropriate MPLOY job type
 		if mappedJobType, exists := jobTypeMapping[jobType]; exists {
