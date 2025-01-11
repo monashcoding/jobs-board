@@ -18,14 +18,14 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		Website: &companyWebsite,
 	}
 
-	jobType, err:= ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label)
+	jobType, err := ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label)
 	if err != nil {
 		utils.Warn("error getting job type: %v", err)
 	}
 
 	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
 	if err != nil {
-		utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
+		//utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
 		parsedCloseDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
 	}
 
@@ -65,15 +65,15 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 
 	// Predefined location types mapping
 	locationMap := map[string]models.LocationType{
-		"Australia":               models.AUSTRALIA,
+		"Australia":                    models.AUSTRALIA,
 		"Australian Capital Territory": models.ACT,
-		"New South Wales":         models.NSW,
-		"Northern Territory":      models.NT,
-		"Queensland":             models.QLD,
-		"South Australia":         models.SA,
-		"Tasmania":               models.TAS,
-		"Victoria":               models.VIC,
-		"Western Australia":      models.WA,
+		"New South Wales":              models.NSW,
+		"Northern Territory":           models.NT,
+		"Queensland":                   models.QLD,
+		"South Australia":              models.SA,
+		"Tasmania":                     models.TAS,
+		"Victoria":                     models.VIC,
+		"Western Australia":            models.WA,
 	}
 
 	// Initialize a slice to hold the mapped locations
@@ -129,70 +129,70 @@ func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]string, er
 
 func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models.WorkingRight, error) {
 	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
-	
-    // Predefined working rights mapping
-    workingRightsMap := map[string]models.WorkingRight{
-        "Australian Permanent Resident":       models.AUS_PR,
-        "Australian Citizen":                  models.AUS_CITIZEN,
-        "New Zealand Citizen":                 models.NZ_CITIZEN,
-        "New Zealand Permanent Resident":      models.NZ_PR,
-        "International Student/Graduate Visa": models.INTERNATIONAL,
-        "New Zealand Temporary Work Visa":     models.WORK_VISA,
-        "New Zealand Student Visa":            models.INTERNATIONAL,
-        "Hong Kong Citizen":                   models.WORK_VISA,
-        "Australian Work Visa (All Other)":    models.WORK_VISA,
-        "Visa Sponsorship Included":           models.VISA_SPONSORED,
-        "Hong Kong Permanent Resident":        models.WORK_VISA,
-    }
 
-    workingRights := []models.WorkingRight{}
-    seen := map[models.WorkingRight]struct{}{} // Map to track unique working rights
+	// Predefined working rights mapping
+	workingRightsMap := map[string]models.WorkingRight{
+		"Australian Permanent Resident":       models.AUS_PR,
+		"Australian Citizen":                  models.AUS_CITIZEN,
+		"New Zealand Citizen":                 models.NZ_CITIZEN,
+		"New Zealand Permanent Resident":      models.NZ_PR,
+		"International Student/Graduate Visa": models.INTERNATIONAL,
+		"New Zealand Temporary Work Visa":     models.WORK_VISA,
+		"New Zealand Student Visa":            models.INTERNATIONAL,
+		"Hong Kong Citizen":                   models.WORK_VISA,
+		"Australian Work Visa (All Other)":    models.WORK_VISA,
+		"Visa Sponsorship Included":           models.VISA_SPONSORED,
+		"Hong Kong Permanent Resident":        models.WORK_VISA,
+	}
 
-    // Iterate over the scraped working rights
-    for _, workingRight := range opportunity.WorkingRights {
-        // Map the working right to our enum value
-        if mappedRight, exists := workingRightsMap[workingRight.Label]; exists {
-            if _, alreadySeen := seen[mappedRight]; !alreadySeen {
-                workingRights = append(workingRights, mappedRight)
-                seen[mappedRight] = struct{}{} // Mark as seen
-            }
-        } else {
-            // If not found in the map, default to "OTHER_RIGHTS"
-            if _, alreadySeen := seen[models.OTHER_RIGHTS]; !alreadySeen {
-                workingRights = append(workingRights, models.OTHER_RIGHTS)
-                seen[models.OTHER_RIGHTS] = struct{}{} // Mark as seen
-            }
-        }
+	workingRights := []models.WorkingRight{}
+	seen := map[models.WorkingRight]struct{}{} // Map to track unique working rights
 
-        // Handle child working rights
-        for _, child := range workingRight.Children {
-            if mappedRight, exists := workingRightsMap[child.Label]; exists {
-                if _, alreadySeen := seen[mappedRight]; !alreadySeen {
-                    workingRights = append(workingRights, mappedRight)
-                    seen[mappedRight] = struct{}{} // Mark as seen
-                }
-            } else {
-                // If the child isn't found in the map, default to "OTHER_RIGHTS"
-                if _, alreadySeen := seen[models.OTHER_RIGHTS]; !alreadySeen {
-                    workingRights = append(workingRights, models.OTHER_RIGHTS)
-                    seen[models.OTHER_RIGHTS] = struct{}{} // Mark as seen
-                }
-            }
-        }
-    }
+	// Iterate over the scraped working rights
+	for _, workingRight := range opportunity.WorkingRights {
+		// Map the working right to our enum value
+		if mappedRight, exists := workingRightsMap[workingRight.Label]; exists {
+			if _, alreadySeen := seen[mappedRight]; !alreadySeen {
+				workingRights = append(workingRights, mappedRight)
+				seen[mappedRight] = struct{}{} // Mark as seen
+			}
+		} else {
+			// If not found in the map, default to "OTHER_RIGHTS"
+			if _, alreadySeen := seen[models.OTHER_RIGHTS]; !alreadySeen {
+				workingRights = append(workingRights, models.OTHER_RIGHTS)
+				seen[models.OTHER_RIGHTS] = struct{}{} // Mark as seen
+			}
+		}
 
-    return workingRights, nil
+		// Handle child working rights
+		for _, child := range workingRight.Children {
+			if mappedRight, exists := workingRightsMap[child.Label]; exists {
+				if _, alreadySeen := seen[mappedRight]; !alreadySeen {
+					workingRights = append(workingRights, mappedRight)
+					seen[mappedRight] = struct{}{} // Mark as seen
+				}
+			} else {
+				// If the child isn't found in the map, default to "OTHER_RIGHTS"
+				if _, alreadySeen := seen[models.OTHER_RIGHTS]; !alreadySeen {
+					workingRights = append(workingRights, models.OTHER_RIGHTS)
+					seen[models.OTHER_RIGHTS] = struct{}{} // Mark as seen
+				}
+			}
+		}
+	}
+
+	return workingRights, nil
 }
 
-func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error){
+func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error) {
 	// Standardise the Prosple Job type to our Job type enums
 	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
 	// Define a map that maps Prosple job types to MPLOY job types
 	jobTypeMap := map[string]models.JobType{
-		"Volunteering":              		  models.OTHER,
-		"Part-Time Student Job":     		  models.FIRST_YEAR,
-		"Graduate Job or Program":   		  models.GRADUATE,
-		"Virtual Experience":        		  models.OTHER,
+		"Volunteering":                       models.OTHER,
+		"Part-Time Student Job":              models.FIRST_YEAR,
+		"Graduate Job or Program":            models.GRADUATE,
+		"Virtual Experience":                 models.OTHER,
 		"Internship, Clerkship or Placement": models.INTERN,
 		"Apprenticeship or Traineeship":      models.INTERN,
 	}
@@ -205,4 +205,3 @@ func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error){
 	// If the job type doesn't exist in the map, return an error
 	return models.JobType(jobtype), fmt.Errorf("unknown job type: %s", jobtype)
 }
-

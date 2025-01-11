@@ -57,8 +57,8 @@ func NewMongoDB(ctx context.Context) (*MongoDB, error) {
 }
 
 // GetCollection returns the MongoDB collection
-func (m *MongoDB) GetCollection() *mongo.Collection {
-	return m.collection
+func (m *MongoDB) GetCollection(name string) *mongo.Collection {
+	return m.database.Collection(name)
 }
 
 // Disconnect closes the MongoDB connection
@@ -96,7 +96,6 @@ func (m *MongoDB) CreateListings(listings []models.Listing) error {
 
 	return nil
 }
-
 
 func (m *MongoDB) UpdateListing(listing models.Listing, id string) error {
 	result, err := m.collection.UpdateOne(context.Background(), id, listing)
@@ -164,4 +163,8 @@ func (m *MongoDB) DeleteListings() error {
 	}
 
 	return nil
+}
+
+func (m *MongoDB) GetDatabase() *mongo.Database {
+	return m.database
 }
