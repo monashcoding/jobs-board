@@ -5,9 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"io"
 	"net/http"
+
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
@@ -32,13 +33,13 @@ type SearchResult struct {
 
 type Opportunity struct {
 	Title         string `json:"title"`
-	DetailPageURl string `json:"detailPageUrl"`
+	DetailPageUrl string `json:"detailPageURL"`
 	Overview      struct {
 		FullText string `json:"fullText"`
 	} `json:"overview"`
 	ParentEmployer struct {
 		Title         string `json:"title"`
-		DetailPageUrl string `json:"detailPageUrl"`
+		DetailPageUrl string `json:"detailPageURL"`
 	} `json:"parentEmployer"`
 	ApplyByUrl            string `json:"applyByUrl"`
 	ApplicationsCloseDate string `json:"applicationsCloseDate"`
@@ -173,6 +174,7 @@ func GetGraphQlQuery() string {
       id
       title
       applyByUrl
+			detailPageURL
       overview {
         fullText
       }

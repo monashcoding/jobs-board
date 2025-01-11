@@ -9,7 +9,7 @@ import (
 )
 
 func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listing, error) {
-	sourceUrl := baseURL + opportunity.DetailPageURl
+	sourceUrl := baseURL + opportunity.DetailPageUrl
 
 	companyWebsite := baseURL + opportunity.ParentEmployer.DetailPageUrl
 
