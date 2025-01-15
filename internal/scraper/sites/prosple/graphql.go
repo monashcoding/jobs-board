@@ -40,6 +40,11 @@ type Opportunity struct {
 	ParentEmployer struct {
 		Title         string `json:"title"`
 		DetailPageUrl string `json:"detailPageURL"`
+		Logo          struct {
+			Thumbnail struct {
+				Url string `json:"url"`
+			} `json:"thumbnail"`
+		} `json:"logo"`
 	} `json:"parentEmployer"`
 	ApplyByUrl            string `json:"applyByUrl"`
 	ApplicationsCloseDate string `json:"applicationsCloseDate"`
@@ -195,6 +200,11 @@ func GetGraphQlQuery() string {
       parentEmployer{
         title
 				detailPageURL
+				logo{
+					thumbnail{
+						url
+					}
+				}
       }
       workingRights{
         children{

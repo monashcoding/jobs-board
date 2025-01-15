@@ -16,6 +16,7 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 	company := models.Company{
 		Name:    opportunity.ParentEmployer.Title,
 		Website: &companyWebsite,
+		Logo:    &opportunity.ParentEmployer.Logo.Thumbnail.Url,
 	}
 
 	jobType, err := ProspleJobTypeToMPLOYJobType(opportunity.OpportunityTypes[0].Label)
