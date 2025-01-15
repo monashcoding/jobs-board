@@ -55,6 +55,7 @@ const (
 type Company struct {
 	Name    string  `bson:"name" json:"name"`
 	Website *string `bson:"website" json:"website"`
+	Logo    *string `bson:"logo" json:"logo"`
 }
 
 type Listing struct {

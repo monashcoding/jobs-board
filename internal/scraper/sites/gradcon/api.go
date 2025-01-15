@@ -49,6 +49,7 @@ type GradConnectCustomerOrganisation struct {
 	Id   string `json:"id"`
 	Name string `json:"name"`
 	Slug string `json:"slug"`
+	Logo string `json:"logo"`
 }
 
 var ErrNoMoreResults = errors.New("no more results available")
