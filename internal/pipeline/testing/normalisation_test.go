@@ -38,3 +38,22 @@ func TestNormalisationTrimsTitle(t *testing.T) {
 		t.Fatalf("Expected 'Trim', got '%s'", testListing.Title)
 	}
 }
+
+
+func TestNormalisationRenamesCompanyName(t *testing.T) {
+	wrongListing := models.Listing{
+		Company: models.Company{
+			Name: "Amazon AU",
+		},
+	}
+
+	correctListing, err := steps.StandardiseCompanyName(wrongListing)
+
+	if err != nil {
+		t.Fatalf("StandardiseCompanyName failed on test listing")
+	}
+
+	if correctListing.Company.Name != "Amazon" {
+		t.Fatalf("Expected 'Amazon', got '%s'", correctListing.Company.Name)
+	}
+}

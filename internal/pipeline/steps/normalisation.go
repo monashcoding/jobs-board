@@ -37,6 +37,11 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 			utils.Warn("Failed to Standardise Study Fields: %v", err)
 		}
 
+		listing, err = StandardiseCompanyName(listing)
+		if err != nil {
+			utils.Warn("Failed to Standardise Company Name: %v", err)
+		}
+
 		// Append the normalised listing to the result slice
 		normalised = append(normalised, listing)
 	}
@@ -81,6 +86,28 @@ func RemoveEmptyStrings(listing models.Listing) (models.Listing, error) {
 		}
 	}
 	listing.StudyFields = filteredStudyFields
+
+	return listing, nil
+}
+
+func StandardiseCompanyName(listing models.Listing) (models.Listing, error) {
+	// Standardise the Study Field strings to a common format
+	// Related Ticket (https://www.notion.so/monashcoding/Pipeline-Normalisation-Standardise-Study-Field-Strings-1591e0829dd880a0abcbd9a8ce13c67c)
+
+	// 1. Trim the company name
+	standardisedName := strings.TrimSpace(listing.Company.Name)
+
+	// 2. Match with known ambiguous company names
+	for _, company := range utils.GetCompanyMap() {
+		for _, match := range company.Matches {
+			if strings.EqualFold(standardisedName, match) {
+				standardisedName = company.Name
+				break
+			}
+		}
+	}
+
+	listing.Company.Name = standardisedName
 
 	return listing, nil
 }
