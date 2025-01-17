@@ -22,9 +22,8 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 	normalised := []models.Listing{} // process and insert listings
 
 	for _, listing := range listings {
-		// Check if Title contains "eoi" or "eoy"
-		if strings.Contains(strings.ToLower(listing.Title), "eoi") || strings.Contains(strings.ToLower(listing.Title), "eoy") {
-			continue // Skip this listing entirely
+		if ListingIsEOI(listing) {
+			continue
 		}
 
 		listing, err := RemoveEmptyStrings(listing)
@@ -47,6 +46,30 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 	}
 
 	return normalised, nil
+}
+
+func ListingIsEOI(listing models.Listing) bool {
+	
+	eoiString:= []string {
+		"eoi",
+		"eoy",
+		"expression of interest",
+		"expressions of interest",
+		"notify me",
+		"register interest",
+		"talent community",
+		"meet a",
+		"virtual internship",
+		"virtual experience",
+	}
+
+	for _, eoi := range eoiString {
+		if strings.Contains(strings.ToLower(listing.Title), eoi) {
+			return true
+		}
+	}
+
+	return false;
 }
 
 func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
