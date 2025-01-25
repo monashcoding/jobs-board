@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 
 	"github.com/joho/godotenv"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
@@ -126,8 +127,8 @@ func RunScraper() {
 	// Initialize pipeline
 	processingPipeline := pipeline.NewPipeline(
 		steps.NewWriteJSONStep(),
-		//steps.NewNormalizationStep(),
-		//steps.NewDeduplicationStep(),
+		steps.NewNormalisationStep(),
+		steps.NewDeduplicationStep(),
 		mvpUpload,
 	)
 

@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"os"
 	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
@@ -84,7 +85,7 @@ func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Li
 
 func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	pages := 30    // Number of pages to scrape
-	pageSize := 20 // Number of listings per page
+	pageSize := 50 // Number of listings per page
 
 	listings := []models.Listing{}
 
