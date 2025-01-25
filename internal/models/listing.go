@@ -78,6 +78,7 @@ type Listing struct {
 	WFHStatus      *WFHStatus         `bson:"wfh_status" json:"wfh_status"`
 	SourceURLs     []string           `bson:"source_urls" json:"source_urls"`
 	Type           *JobType           `bson:"type" json:"type"`
+	OpenDate       *time.Time         `bson:"open_date,omitempty" json:"open_date"`
 	CloseDate      *time.Time         `bson:"close_date,omitempty" json:"close_date"`
 	Locations      []LocationType     `bson:"locations" json:"locations"`
 	StudyFields    []string           `bson:"study_fields" json:"study_fields"`

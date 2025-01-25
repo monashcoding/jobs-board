@@ -31,6 +31,7 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 			}
 
 			closeDate := GetGradConCloseDate(campaign)
+			openDate := GetGradConOpenDate(campaign)
 
 			workingRights, err := GradConWorkRightsToMPLOYWorkingRights(campaign)
 			if err != nil {
@@ -52,7 +53,8 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 				ApplicationURL: &campaign.OriginTargetURL,
 				SourceURLs:     []string{jobUrl},
 				Type:           &jobType,
-				CloseDate:      &closeDate,
+				OpenDate:       openDate,
+				CloseDate:      closeDate,
 				Locations:      locations,
 				StudyFields:    studyFields,
 				WorkingRights:  workingRights,
@@ -118,8 +120,7 @@ func GradConStudyFieldsToMPLOYStudyFields(campaign GradConnectCampaign) ([]strin
 	return studyFields, nil
 }
 
-func GetGradConCloseDate(campaign GradConnectCampaign) time.Time {
-	defaultDate := time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
+func GetGradConCloseDate(campaign GradConnectCampaign) *time.Time {
 	endDate := campaign.Interval.End
 
 	parsedEndDate, err := time.Parse(time.RFC3339, endDate)
@@ -127,9 +128,21 @@ func GetGradConCloseDate(campaign GradConnectCampaign) time.Time {
 	if err != nil {
 		//utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
 
-		return defaultDate
+		return nil
 	} else {
-		return parsedEndDate
+		return &parsedEndDate
+	}
+}
+
+func GetGradConOpenDate(campaign GradConnectCampaign) *time.Time {
+	openDate := campaign.Interval.Start
+
+	parsedOpenDate, err := time.Parse(time.RFC3339, openDate)
+
+	if err != nil {
+		return nil
+	} else {
+		return &parsedOpenDate
 	}
 }
 

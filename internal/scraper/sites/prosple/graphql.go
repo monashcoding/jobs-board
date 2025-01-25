@@ -47,6 +47,7 @@ type Opportunity struct {
 		} `json:"logo"`
 	} `json:"parentEmployer"`
 	ApplyByUrl            string `json:"applyByUrl"`
+	ApplicationsOpenDate  string `json:"applicationsOpenDate"`
 	ApplicationsCloseDate string `json:"applicationsCloseDate"`
 	OpportunityTypes      []struct {
 		Label string `json:"label"`
@@ -186,6 +187,7 @@ func GetGraphQlQuery() string {
       opportunityTypes {
         label
       }
+			applicationsOpenDate
       applicationsCloseDate
       locationDescription
       studyFields{

@@ -24,11 +24,8 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		utils.Warn("error getting job type: %v", err)
 	}
 
-	parsedCloseDate, err := time.Parse("2006-01-02T15:04:05.000Z", opportunity.ApplicationsCloseDate)
-	if err != nil {
-		//utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
-		parsedCloseDate = time.Unix(0, 0).UTC() // Default to 1970-01-01T00:00:00Z
-	}
+	parsedOpenDate := ParseProspleTimeString(opportunity.ApplicationsOpenDate)
+	parsedCloseDate := ParseProspleTimeString(opportunity.ApplicationsCloseDate)
 
 	locations, err := ProspleLocationsToMPLOYLocationTypes(opportunity)
 	if err != nil {
@@ -52,7 +49,8 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		ApplicationURL: &opportunity.ApplyByUrl,
 		SourceURLs:     []string{sourceUrl},
 		Type:           &jobType,
-		CloseDate:      &parsedCloseDate,
+		OpenDate:       parsedOpenDate,
+		CloseDate:      parsedCloseDate,
 		Locations:      locations,
 		StudyFields:    studyfield,
 		WorkingRights:  workingRights,
@@ -205,4 +203,16 @@ func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error) {
 
 	// If the job type doesn't exist in the map, return an error
 	return models.JobType(jobtype), fmt.Errorf("unknown job type: %s", jobtype)
+}
+
+func ParseProspleTimeString(timeStr string) *time.Time {
+	parsedTime, err := time.Parse("2006-01-02T15:04:05.000Z", timeStr)
+
+	if err != nil {
+		//utils.Warn("error parsing close date: %v, defaulting to 1970-01-01T00:00:00Z", err)
+
+		return nil
+	} else {
+		return &parsedTime
+	}
 }

@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
@@ -23,6 +24,10 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 
 	for _, listing := range listings {
 		if ListingIsEOI(listing) {
+			continue
+		}
+
+		if ListingActiveDateIsInFuture(listing) {
 			continue
 		}
 
@@ -49,6 +54,8 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 		// Append the normalised listing to the result slice
 		normalised = append(normalised, listing)
 	}
+
+	utils.Success("Normalisation: %d -> %d listings", len(listings), len(normalised))
 
 	return normalised, nil
 }
@@ -77,11 +84,17 @@ func ListingIsEOI(listing models.Listing) bool {
 	return false
 }
 
+func ListingActiveDateIsInFuture(listing models.Listing) bool {
+	if listing.OpenDate == nil {
+		return false
+	}
+
+	return listing.OpenDate.After(time.Now())
+}
+
 func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
 	// Standardise the Study Field strings to a common format
 	// Related Ticket (https://www.notion.so/monashcoding/Pipeline-Normalisation-Standardise-Study-Field-Strings-1591e0829dd880a0abcbd9a8ce13c67c)
-	utils.Log("Add your own logs")
-
 	return listing, nil
 }
 

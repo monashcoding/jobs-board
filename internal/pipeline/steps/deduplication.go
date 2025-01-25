@@ -53,7 +53,7 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 	}
 
 	// process and insert listings. objects with existing IDs will be overwritten
-	utils.Log("Deduplication: %d -> %d listings", len(listings), len(uniqueListings))
+	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings))
 
 	return uniqueListings, nil
 }

@@ -21,8 +21,8 @@ type GradconScraper struct {
 func NewGradconScraper() *GradconScraper {
 	config := unblocker.Config{
 		Features: unblocker.Features{
-			UseRateLimiting: true,
-			UseIPRotation:   true,
+			// UseRateLimiting: true,
+			// UseIPRotation:   true,
 		},
 		BrightData: &unblocker.BrightDataConfig{
 			CustomerID:  os.Getenv("BRIGHTDATA_CUSTOMER_ID"),
