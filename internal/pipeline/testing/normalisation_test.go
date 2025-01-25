@@ -39,7 +39,6 @@ func TestNormalisationTrimsTitle(t *testing.T) {
 	}
 }
 
-
 func TestNormalisationRenamesCompanyName(t *testing.T) {
 	wrongListing := models.Listing{
 		Company: models.Company{

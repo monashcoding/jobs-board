@@ -58,6 +58,17 @@ type Company struct {
 	Logo    *string `bson:"logo" json:"logo"`
 }
 
+type IndustryField string
+
+const (
+	CONSULTING     IndustryField = "CONSULTING"
+	BANKS          IndustryField = "BANKS"
+	BIG_TECH       IndustryField = "BIG_TECH"
+	TECH           IndustryField = "TECH"
+	QUANT_TRADING  IndustryField = "QUANT_TRADING"
+	OTHER_INDUSTRY IndustryField = "OTHER_INDUSTRY"
+)
+
 type Listing struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Title          string             `bson:"title" json:"title"`
@@ -70,6 +81,7 @@ type Listing struct {
 	CloseDate      *time.Time         `bson:"close_date,omitempty" json:"close_date"`
 	Locations      []LocationType     `bson:"locations" json:"locations"`
 	StudyFields    []string           `bson:"study_fields" json:"study_fields"`
+	IndustryField  IndustryField      `bson:"industry_field" json:"industry_field"`
 	WorkingRights  []WorkingRight     `bson:"working_rights" json:"working_rights"`
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`

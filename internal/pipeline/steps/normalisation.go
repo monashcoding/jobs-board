@@ -41,6 +41,11 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 			utils.Warn("Failed to Standardise Company Name: %v", err)
 		}
 
+		listing, err = AssignIndustryByCompany(listing)
+		if err != nil {
+			utils.Warn("Failed to Assign Industry by Company: %v", err)
+		}
+
 		// Append the normalised listing to the result slice
 		normalised = append(normalised, listing)
 	}
@@ -49,8 +54,8 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 }
 
 func ListingIsEOI(listing models.Listing) bool {
-	
-	eoiString:= []string {
+
+	eoiString := []string{
 		"eoi",
 		"eoy",
 		"expression of interest",
@@ -69,7 +74,7 @@ func ListingIsEOI(listing models.Listing) bool {
 		}
 	}
 
-	return false;
+	return false
 }
 
 func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
@@ -131,6 +136,26 @@ func StandardiseCompanyName(listing models.Listing) (models.Listing, error) {
 	}
 
 	listing.Company.Name = standardisedName
+
+	return listing, nil
+}
+
+func AssignIndustryByCompany(listing models.Listing) (models.Listing, error) {
+	// Validate input
+	companyName := strings.TrimSpace(listing.Company.Name)
+
+	// Get the industry map
+	companyToIndustryMap := utils.GetIndustryMap()
+
+	// Find the industry for the company
+	for industry, companies := range companyToIndustryMap {
+		for _, company := range companies {
+			if strings.EqualFold(companyName, company) {
+				listing.IndustryField = industry
+				break
+			}
+		}
+	}
 
 	return listing, nil
 }
