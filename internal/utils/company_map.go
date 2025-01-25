@@ -52,11 +52,4 @@ var companyMap = []struct {
 			"CBA",
 		},
 	},
-	{
-		Name: "TikTok",
-		Matches: []string{
-			"TikTok Australia & New Zealand",
-			"TikTok",
-		},
-	},
 }
