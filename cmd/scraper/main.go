@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
 
 	"github.com/joho/godotenv"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
@@ -115,8 +113,8 @@ func RunScraper() {
 	// Initialize scrapers
 	scrapers := []scraper.Scraper{
 		gradcon.NewGradconScraper(),
-		prosple.NewProspleScraper(),
-		linkedin.NewLinkedInScraper(),
+		// prosple.NewProspleScraper(),
+		// linkedin.NewLinkedInScraper(),
 	}
 
 	mvpUpload := steps.NewMVPUploadStep(mongodb)
@@ -127,9 +125,9 @@ func RunScraper() {
 	// Initialize pipeline
 	processingPipeline := pipeline.NewPipeline(
 		steps.NewWriteJSONStep(),
-		steps.NewNormalisationStep(),
-		steps.NewDeduplicationStep(),
-		mvpUpload,
+	// 	steps.NewNormalisationStep(),
+	// 	steps.NewDeduplicationStep(),
+	// 	mvpUpload,
 	)
 
 	// Collect all listings from scrapers

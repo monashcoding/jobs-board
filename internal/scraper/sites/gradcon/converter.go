@@ -2,11 +2,50 @@ package gradcon
 
 import (
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
+
+func (s *GradconScraper) MergeDetailedDescriptionsWithListings(listings []models.Listing, allCompanyIds []string) {
+	// find unique company ids
+	uniqueCompanyIds := make(map[string]bool)
+	for _, companyId := range allCompanyIds {
+		uniqueCompanyIds[companyId] = true
+	}
+
+	gradConnectCompanyListingData := []GradConnectDecriptionData{}
+
+	// Call the gradconnect customer organisation API for each company Id
+	utils.Log("Getting detailed descriptions for %d companies", len(uniqueCompanyIds))
+
+	for companyId := range uniqueCompanyIds {
+		companyApiReponse, err := SendCompanyAPIRequest(companyId, s.unblocker)
+		if err != nil {
+			utils.Warn("error getting company api response: %v", err)
+		}
+
+		gradConnectCompanyListingData = append(gradConnectCompanyListingData, *companyApiReponse...)
+	}
+
+	mergeCount := 0
+
+	// Merge the detailed descriptions with the listings
+	for i, listing := range listings {
+		for _, companyListing := range gradConnectCompanyListingData {
+			match := regexp.MustCompile(`[^/]*$`).FindString(listing.SourceURLs[0])
+
+			if companyListing.Slug == match {
+				mergeCount++
+				listings[i].Description = &companyListing.Content
+			}
+		}
+	}
+
+	utils.Log("Merged %d detailed descriptions out of %d listings", mergeCount, len(listings))
+}
 
 func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listing, error) {
 	campaigns := gradConnect.Campaigns

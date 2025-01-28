@@ -61,17 +61,19 @@ func (s *GradconScraper) API_URL() string {
 	return "https://au.gradconnection.com/api/campaignsearch"
 }
 
-func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Listing, error) {
+func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Listing, []string, error) {
 	gradConnectApiUrl := s.API_URL()
 	var listings []models.Listing
+	var companyIds []string
 
 	result, err := SendAPIRequest(gradConnectApiUrl, pageSize, offset, s.unblocker)
 	if err != nil {
-		return nil, err
+		return nil, companyIds, err
 	}
 
 	for _, item := range *result {
 		gradConnectListings, err := GradConnectToMPLOY(item, s.URL())
+		companyIds = append(companyIds, item.CustomerOrganisation.Id)
 
 		if err != nil {
 			utils.Warn("Error converting opportunity to model: %v", err)
@@ -80,14 +82,15 @@ func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Li
 		listings = append(listings, gradConnectListings...)
 	}
 
-	return listings, nil
+	return listings, companyIds, nil
 }
 
 func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
-	pages := 30    // Number of pages to scrape
-	pageSize := 50 // Number of listings per page
+	pages := 2     // Number of pages to scrape
+	pageSize := 25 // Number of listings per page
 
 	listings := []models.Listing{}
+	companyIds := []string{}
 
 	// Scrape all listings
 	scrapeAll := true
@@ -96,7 +99,7 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 		for i := 0; ; i++ {
 			utils.Log("Fully Scraping GradConnect: Page %d", i+1)
 
-			newListings, err := s.PerformAPIScrape(i*pageSize, pageSize)
+			newListings, newCompanyIds, err := s.PerformAPIScrape(i*pageSize, pageSize)
 
 			if err != nil {
 				listings = append(listings, newListings...)
@@ -106,11 +109,16 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 			if len(newListings) != pageSize {
 				// End of results
 				listings = append(listings, newListings...)
+				companyIds = append(companyIds, newCompanyIds...)
 				break
 			}
 
 			listings = append(listings, newListings...)
+			companyIds = append(companyIds, newCompanyIds...)
 		}
+
+		// Get Company Listing Data for Detailed Job Description
+		s.MergeDetailedDescriptionsWithListings(listings, companyIds)
 
 		return listings, nil
 	}
@@ -118,7 +126,7 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	for i := 0; i < pages; i++ {
 		utils.Log("Scraping GradConnect: Page %d of %d...", i+1, pages)
 
-		newListings, err := s.PerformAPIScrape(i*pageSize, pageSize)
+		newListings, newCompanyIds, err := s.PerformAPIScrape(i*pageSize, pageSize)
 		if errors.Is(err, ErrNoMoreResults) {
 			utils.Log("Reached end of available listings")
 			break
@@ -129,7 +137,11 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 		}
 
 		listings = append(listings, newListings...)
+		companyIds = append(companyIds, newCompanyIds...)
 	}
+
+	// Get Company Listing Data for Detailed Job Description
+	s.MergeDetailedDescriptionsWithListings(listings, companyIds)
 
 	return listings, nil
 }
