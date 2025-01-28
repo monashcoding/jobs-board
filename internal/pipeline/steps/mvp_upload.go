@@ -86,29 +86,36 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 		return listings, nil
 	}
 
-	// 1. Store historical snapshot
-	// Create a timestamp-based collection name
-	timestamp := time.Now().Format("2006_01_02_15_04_05")
-	historicalCollection := fmt.Sprintf("jobs_%s", timestamp)
+	createSnapshot := false
 
-	// Create historical snapshot
-	histColl := s.mongodb.GetDatabase().Collection(historicalCollection)
-	docs := make([]interface{}, len(listings))
-	for i, listing := range listings {
-		docs[i] = listing
+	if createSnapshot {
+		// 1. Store historical snapshot
+		// Create a timestamp-based collection name
+		timestamp := time.Now().Format("2006_01_02_15_04_05")
+		historicalCollection := fmt.Sprintf("jobs_%s", timestamp)
+
+		// Create historical snapshot
+		histColl := s.mongodb.GetDatabase().Collection(historicalCollection)
+		docs := make([]interface{}, len(listings))
+		for i, listing := range listings {
+			docs[i] = listing
+		}
+
+		_, err := histColl.InsertMany(ctx, docs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create historical snapshot: %w", err)
+		}
 	}
-
-	_, err := histColl.InsertMany(ctx, docs)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create historical snapshot: %w", err)
-	}
-
 	// 2. Update active jobs collection
 	activeColl := s.mongodb.GetDatabase().Collection("active_jobs")
 
+	// Get number of old jobs
+	oldTotal, _ := activeColl.CountDocuments(ctx, bson.M{})
+	oldActive, _ := activeColl.CountDocuments(ctx, bson.M{"outdated": false})
+
 	// Mark all existing jobs as outdated
 	now := time.Now()
-	_, err = activeColl.UpdateMany(ctx,
+	_, err := activeColl.UpdateMany(ctx,
 		bson.M{},
 		bson.M{"$set": bson.M{"outdated": true}})
 	if err != nil {
@@ -198,6 +205,16 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 	// 	utils.Error("Failed to insert metadata: %v", err)
 	// }
 
-	utils.Success("Successfully inserted %d listings into collection %s", len(listings), historicalCollection)
+	newTotal, _ := activeColl.CountDocuments(ctx, bson.M{})
+	newActive, _ := activeColl.CountDocuments(ctx, bson.M{"outdated": false})
+
+	utils.Success("Inserted %d new listings. Total Listings %d <- %d | Active Listings %d <- %d",
+		newTotal-oldTotal,
+		newTotal,
+		oldTotal,
+		newActive,
+		oldActive,
+	)
+
 	return listings, nil
 }
