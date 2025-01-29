@@ -129,6 +129,7 @@ func RunScraper() {
 		steps.NewWriteJSONStep(),
 		steps.NewNormalisationStep(),
 		steps.NewDeduplicationStep(),
+		steps.NewSynchronisationStep(),
 		steps.NewAiParserStep(),
 		mvpUpload,
 	)

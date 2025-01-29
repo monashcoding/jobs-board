@@ -29,7 +29,6 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 	utils.Log("Runnings %d listings through AI Parser", len(listings))
 
 	for _, listing := range listings {
-
 		listing, err := FixDescriptionFormat(listing)
 		if err != nil {
 			utils.Warn("Failed to Fix Description Format: %v", err)
@@ -61,7 +60,6 @@ type ChatResponse struct {
 
 func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 	// Skip descriptions with HTML tags already
-
 	if !strings.HasPrefix(*listing.Description, "<") || !strings.HasPrefix(*listing.Description, "\u003c") {
 		// Set endpoint and API key
 		endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
