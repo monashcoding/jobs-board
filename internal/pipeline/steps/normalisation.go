@@ -150,11 +150,6 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 			utils.Warn("Failed to Assign Industry by Company: %v", err)
 		}
 
-		listing, err = FixDescriptionFormat(listing)
-		if err != nil {
-			utils.Warn("Failed to Fix Description Format: %v", err)
-		}
-
 		// Append the normalised listing to the result slice
 		normalised = append(normalised, listing)
 	}

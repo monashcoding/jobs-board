@@ -208,12 +208,12 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 	newTotal, _ := activeColl.CountDocuments(ctx, bson.M{})
 	newActive, _ := activeColl.CountDocuments(ctx, bson.M{"outdated": false})
 
-	utils.Success("Inserted %d new listings. Total Listings %d <- %d | Active Listings %d <- %d",
+	utils.Success("Inserted %d new listings. Total Listings %d -> %d | Active Listings %d -> %d",
 		newTotal-oldTotal,
-		newTotal,
 		oldTotal,
-		newActive,
+		newTotal,
 		oldActive,
+		newActive,
 	)
 
 	return listings, nil

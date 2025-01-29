@@ -26,7 +26,10 @@ func (s *AIParserStep) Name() string {
 func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
 	parsedListings := []models.Listing{} // process and insert listings
 
+	utils.Log("Runnings %d listings through AI Parser", len(listings))
+
 	for _, listing := range listings {
+
 		listing, err := FixDescriptionFormat(listing)
 		if err != nil {
 			utils.Warn("Failed to Fix Description Format: %v", err)
@@ -57,9 +60,8 @@ type ChatResponse struct {
 }
 
 func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
-	utils.Debug("Sending description through AI assistant")
-
 	// Skip descriptions with HTML tags already
+
 	if !strings.HasPrefix(*listing.Description, "<") || !strings.HasPrefix(*listing.Description, "\u003c") {
 		// Set endpoint and API key
 		endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
@@ -118,19 +120,16 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 
 		// Output the assistant's response
 		if len(chatResponse.Choices) > 0 {
-			// utils.Debug("Original description:", *listing.Description)
-
 			desc := strings.TrimPrefix(chatResponse.Choices[0].Message.Content, "```html")
 			desc = strings.TrimSuffix(desc, "```")
 			desc = strings.TrimSpace(desc)
 			*listing.Description = desc
 		} else {
-			utils.Debug("No response received.")
+			utils.Error("No response received.")
 		}
 	}
 	// Replace all /n
 	*listing.Description = strings.ReplaceAll(*listing.Description, "\n", "")
-	// utils.Debug("Assistant's Response:", *listing.Description)
 
 	return listing, nil
 }
