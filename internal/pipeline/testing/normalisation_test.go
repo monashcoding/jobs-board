@@ -56,3 +56,22 @@ func TestNormalisationRenamesCompanyName(t *testing.T) {
 		t.Fatalf("Expected 'Amazon', got '%s'", correctListing.Company.Name)
 	}
 }
+
+func TestCanAssignIndustryField(t *testing.T) {
+	listing := models.Listing{
+		Title: "Software Engineer",
+		Company: models.Company{
+			Name: "Tesla Australia",
+		},
+	}
+
+	industry, err := steps.AssignIndustryByCompany(listing)
+
+	if err != nil {
+		t.Fatalf("AssignIndustryByCompany failed on test listing")
+	}
+
+	if industry.IndustryField != models.TECH {
+		t.Fatalf("Expected '%s', got '%s'", models.BIG_TECH, listing.IndustryField)
+	}
+}

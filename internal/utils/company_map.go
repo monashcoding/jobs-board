@@ -52,4 +52,16 @@ var companyMap = []struct {
 			"CBA",
 		},
 	},
+	{
+		Name: "TikTok",
+		Matches: []string{
+			"TikTok Australia & New Zealand",
+		},
+	},
+	{
+		Name: "Sportsbet",
+		Matches: []string{
+			"Sportsbet Australia",
+		},
+	},
 }
