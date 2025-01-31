@@ -3,9 +3,10 @@ package prosple
 import (
 	"context"
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 	"os"
 	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
@@ -13,6 +14,9 @@ import (
 
 type ProspleScraper struct {
 	unblocker unblocker.Service
+	maxPages int
+	pageSize int
+	scrapeAll bool
 }
 
 func NewProspleScraper() *ProspleScraper {
@@ -57,6 +61,18 @@ func (s *ProspleScraper) API_URL() string {
 	return "https://prosple-gw.global.ssl.fastly.net/internal"
 }
 
+func (s *ProspleScraper) SetMaxPages(maxPages int) {
+	s.maxPages = maxPages
+}
+
+func (s *ProspleScraper) SetPageSize(pageSize int) {
+	s.pageSize = pageSize
+}
+
+func (s *ProspleScraper) SetScrapeAll(scrapeAll bool) {
+	s.scrapeAll = scrapeAll
+}
+
 func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int) ([]models.Listing, error) {
 	prospleApiUrl := s.API_URL()
 	var listings []models.Listing
@@ -84,23 +100,20 @@ func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int) ([]model
 
 func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	var listings []models.Listing
-	pages := 2     // Number of pages to scrape
-	pageSize := 50 // Number of listings per page
 
 	// Scrape all listings
-	scrapeAll := true
-	if scrapeAll {
+	if s.scrapeAll {
 		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
 		for i := 0; ; i++ {
 			utils.Log("Fully Scraping Prosple: Page %d", i+1)
 
-			newListings, err := s.PerformGraphQLScrape(i*pageSize, pageSize)
+			newListings, err := s.PerformGraphQLScrape(i * s.pageSize, s.pageSize)
 
 			if err != nil {
 				return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
 			}
 
-			if len(newListings) != pageSize {
+			if len(newListings) != s.pageSize {
 				// End of results
 				listings = append(listings, newListings...)
 				break
@@ -113,10 +126,10 @@ func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	}
 
 	// Scrape a fixed number of pages
-	for i := 0; i < pages; i++ {
-		utils.Log("Scraping Prosple: Page %d of %d...", i+1, pages)
+	for i := 0; i < s.maxPages; i++ {
+		utils.Log("Scraping Prosple: Page %d of %d...", i+1, s.maxPages)
 
-		newListings, err := s.PerformGraphQLScrape(i*pageSize, pageSize)
+		newListings, err := s.PerformGraphQLScrape(i * s.pageSize, s.pageSize)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to scrape Prosple: %v", err)

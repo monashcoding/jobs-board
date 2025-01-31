@@ -91,7 +91,6 @@ type Listing struct {
 	CloseDate      *time.Time         `bson:"close_date,omitempty" json:"close_date"`
 	Locations      []LocationType     `bson:"locations" json:"locations"`
 	Source         Source             `bson:"source" json:"source"`
-	ScraperVersion *string            `bson:"scraper_version" json:"scraper_version"`
 	StudyFields    []string           `bson:"study_fields" json:"study_fields"`
 	IndustryField  IndustryField      `bson:"industry_field" json:"industry_field"`
 	WorkingRights  []WorkingRight     `bson:"working_rights" json:"working_rights"`

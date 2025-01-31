@@ -16,6 +16,9 @@ import (
 type GradconScraper struct {
 	unblocker unblocker.Service
 	baseURL   string
+	maxPages int
+	pageSize int
+	scrapeAll bool
 }
 
 func NewGradconScraper() *GradconScraper {
@@ -61,6 +64,18 @@ func (s *GradconScraper) API_URL() string {
 	return "https://au.gradconnection.com/api/campaignsearch"
 }
 
+func (s *GradconScraper) SetMaxPages(maxPages int) {
+	s.maxPages = maxPages
+}
+
+func (s *GradconScraper) SetPageSize(pageSize int) {
+	s.pageSize = pageSize
+}
+
+func (s *GradconScraper) SetScrapeAll(scrapeAll bool) {
+	s.scrapeAll = scrapeAll
+}
+
 func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Listing, []string, error) {
 	gradConnectApiUrl := s.API_URL()
 	var listings []models.Listing
@@ -86,27 +101,23 @@ func (s *GradconScraper) PerformAPIScrape(offset int, pageSize int) ([]models.Li
 }
 
 func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
-	pages := 2     // Number of pages to scrape
-	pageSize := 25 // Number of listings per page
-
 	listings := []models.Listing{}
 	companyIds := []string{}
 
 	// Scrape all listings
-	scrapeAll := true
-	if scrapeAll {
+	if s.scrapeAll {
 		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
 		for i := 0; ; i++ {
 			utils.Log("Fully Scraping GradConnect: Page %d", i+1)
 
-			newListings, newCompanyIds, err := s.PerformAPIScrape(i*pageSize, pageSize)
+			newListings, newCompanyIds, err := s.PerformAPIScrape(i*s.pageSize, s.pageSize)
 
 			if err != nil {
 				listings = append(listings, newListings...)
 				return listings, nil
 			}
 
-			if len(newListings) != pageSize {
+			if len(newListings) != s.pageSize {
 				// End of results
 				listings = append(listings, newListings...)
 				companyIds = append(companyIds, newCompanyIds...)
@@ -123,10 +134,10 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 		return listings, nil
 	}
 
-	for i := 0; i < pages; i++ {
-		utils.Log("Scraping GradConnect: Page %d of %d...", i+1, pages)
+	for i := 0; i < s.maxPages; i++ {
+		utils.Log("Scraping GradConnect: Page %d of %d...", i+1, s.maxPages)
 
-		newListings, newCompanyIds, err := s.PerformAPIScrape(i*pageSize, pageSize)
+		newListings, newCompanyIds, err := s.PerformAPIScrape(i * s.pageSize, s.pageSize)
 		if errors.Is(err, ErrNoMoreResults) {
 			utils.Log("Reached end of available listings")
 			break

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
@@ -18,7 +19,7 @@ type Pipeline struct {
 	steps []Step
 }
 
-func NewPipeline(steps ...Step) *Pipeline {
+func NewPipeline(steps []Step) *Pipeline {
 	return &Pipeline{
 		steps: steps,
 	}
@@ -30,12 +31,12 @@ func (p *Pipeline) Run(ctx context.Context, listings []models.Listing) ([]models
 	currentListings := listings
 
 	for _, step := range p.steps {
-		utils.Log("Running step: " + step.Name())
+		utils.Log("%s", "Running step: " + step.Name())
 		currentListings, err = step.Process(ctx, currentListings)
 		if err != nil {
 			return nil, fmt.Errorf("error in %s step: %w", step.Name(), err)
 		}
-		utils.Log("Finished step: " + step.Name())
+		utils.Log("%s", "Finished step: " + step.Name())
 	}
 
 	return currentListings, nil

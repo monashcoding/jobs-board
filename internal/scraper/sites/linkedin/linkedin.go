@@ -4,18 +4,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
-	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
-	"github.com/monashcoding/mploy-golang-core/internal/utils"
 	"io"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 type LinkedInScraper struct {
 	unblocker unblocker.Service
 	baseURL   string
+	maxListings int
 }
 
 func NewLinkedInScraper() *LinkedInScraper {
@@ -57,6 +59,10 @@ func (s *LinkedInScraper) URL() string {
 	return s.baseURL
 }
 
+func (s *LinkedInScraper) SetMaxListings(maxListings int) {
+	s.maxListings = maxListings
+}
+
 func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	listings := []models.Listing{}
 
@@ -83,7 +89,6 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
 	var allJobs []Job
 	start := 0
-	maxJobs := 100
 
 	for {
 		utils.Log("Fetching jobs page starting at offset %d", start)
@@ -151,8 +156,8 @@ func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
 		allJobs = append(allJobs, jobs...)
 
 		// Check if we've hit our maximum
-		if maxJobs > 0 && len(allJobs) >= maxJobs {
-			allJobs = allJobs[:maxJobs]
+		if s.maxListings > 0 && len(allJobs) >= s.maxListings {
+			allJobs = allJobs[:s.maxListings]
 			break
 		}
 

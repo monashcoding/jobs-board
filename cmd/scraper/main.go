@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	config "github.com/monashcoding/mploy-golang-core"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
@@ -112,30 +113,66 @@ func RunScraper() {
 		cancel()
 	}()
 
-	// Initialize scrapers
-	scrapers := []scraper.Scraper{
-		gradcon.NewGradconScraper(),
-		prosple.NewProspleScraper(),
-		linkedin.NewLinkedInScraper(),
-	}
+	// Load Config
+	config := config.GetConfig()
 
-	mvpUpload := steps.NewMVPUploadStep(mongodb)
+	// Initialize scrapers
+	var scrapers []scraper.Scraper
+	if config.RunGradConnection {
+			gradconScraper := gradcon.NewGradconScraper()
+			// Set GradConnection specific settings
+			gradconScraper.SetPageSize(config.GradConnectionPageSize)
+			gradconScraper.SetMaxPages(config.GradConnectionMaxPages)
+			gradconScraper.SetScrapeAll(config.GradConnectionScrapeAll)
+
+			scrapers = append(scrapers, gradconScraper)
+	}
+	if config.RunProsple {
+			prospleScraper := prosple.NewProspleScraper()
+			// Set Prosple specific settings
+			prospleScraper.SetPageSize(config.ProsplePageSize)
+			prospleScraper.SetMaxPages(config.ProspleMaxPages)
+			prospleScraper.SetScrapeAll(config.ProspleScrapeAll)
+			scrapers = append(scrapers, prospleScraper)
+	}
+	if config.RunLinkedIn {
+			linkedinScraper := linkedin.NewLinkedInScraper()
+			// Set LinkedIn specific settings
+			linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
+			scrapers = append(scrapers, linkedinScraper)
+	}
+	
+
+	mvpUpload := steps.NewMVPUploadStep(mongodb, config.Version)
 	utils.SetLogHandler(func(log string) {
 		mvpUpload.AddLog(log)
 	})
 
 	// Initialize pipeline
-	processingPipeline := pipeline.NewPipeline(
-		steps.NewWriteJSONStep(),
-		steps.NewNormalisationStep(),
-		steps.NewDeduplicationStep(),
-		steps.NewSynchronisationStep(),
-		steps.NewAiParserStep(),
-		mvpUpload,
-	)
+	var pipelineSteps []pipeline.Step
+
+	if config.RunWriteJson {
+			pipelineSteps = append(pipelineSteps, steps.NewWriteJSONStep())
+	}
+	if config.RunNormalisation {
+			pipelineSteps = append(pipelineSteps, steps.NewNormalisationStep())
+	}
+	if config.RunDeduplication {
+			pipelineSteps = append(pipelineSteps, steps.NewDeduplicationStep())
+	}
+	if config.RunSynchronisation {
+			pipelineSteps = append(pipelineSteps, steps.NewSynchronisationStep())
+	}
+	if config.RunAiParser {
+			pipelineSteps = append(pipelineSteps, steps.NewAiParserStep())
+	}
+	if config.RunUpload {
+			pipelineSteps = append(pipelineSteps, mvpUpload)
+	}
 
 	// Collect all listings from scrapers
 	var allListings []models.Listing
+
 	for _, s := range scrapers {
 		utils.Log("Running scraper %s...", s.Name())
 		listings, err := s.Scrape(ctx)
@@ -150,6 +187,8 @@ func RunScraper() {
 	utils.Success("Scraping section finished. Starting pipelines...")
 
 	// Run pipeline with scrapers
+	processingPipeline := pipeline.NewPipeline(pipelineSteps)
+
 	if _, err := processingPipeline.Run(ctx, allListings); err != nil {
 		utils.Error("Error processing listings: %v", err)
 	}

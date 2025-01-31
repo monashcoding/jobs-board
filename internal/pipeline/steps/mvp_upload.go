@@ -20,13 +20,15 @@ import (
 
 type MVPUploadStep struct {
 	mongodb *database.MongoDB
+	version string
 	logs    []string
 }
 
-func NewMVPUploadStep(mongodb *database.MongoDB) *MVPUploadStep {
+func NewMVPUploadStep(mongodb *database.MongoDB, version string) *MVPUploadStep {
 	return &MVPUploadStep{
 		mongodb: mongodb,
 		logs:    make([]string, 0),
+		version: version,
 	}
 }
 
@@ -154,7 +156,7 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 					"working_rights":  listing.WorkingRights,
 					"industry_field":  listing.IndustryField,
 					"source":          listing.Source,
-					"scraper_version": listing.ScraperVersion,
+					"version":         s.version,
 					"updated_at":      now,
 					"outdated":        false,
 					"fingerprint":     fingerprint,
