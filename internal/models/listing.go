@@ -69,6 +69,15 @@ const (
 	OTHER_INDUSTRY IndustryField = "OTHER_INDUSTRY"
 )
 
+type Source string
+
+const (
+	GRADCONNECTION Source = "GRADCONNECTION"
+	PROSPLE        Source = "PROSPLE"
+	LINKEDIN       Source = "LINKEDIN"
+	MULTIPLE       Source = "MULTIPLE"
+)
+
 type Listing struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Title          string             `bson:"title" json:"title"`
@@ -81,6 +90,8 @@ type Listing struct {
 	OpenDate       *time.Time         `bson:"open_date,omitempty" json:"open_date"`
 	CloseDate      *time.Time         `bson:"close_date,omitempty" json:"close_date"`
 	Locations      []LocationType     `bson:"locations" json:"locations"`
+	Source         Source             `bson:"source" json:"source"`
+	ScraperVersion *string            `bson:"scraper_version" json:"scraper_version"`
 	StudyFields    []string           `bson:"study_fields" json:"study_fields"`
 	IndustryField  IndustryField      `bson:"industry_field" json:"industry_field"`
 	WorkingRights  []WorkingRight     `bson:"working_rights" json:"working_rights"`

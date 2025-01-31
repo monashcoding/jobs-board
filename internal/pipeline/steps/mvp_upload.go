@@ -153,6 +153,8 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 					"study_fields":    listing.StudyFields,
 					"working_rights":  listing.WorkingRights,
 					"industry_field":  listing.IndustryField,
+					"source":          listing.Source,
+					"scraper_version": listing.ScraperVersion,
 					"updated_at":      now,
 					"outdated":        false,
 					"fingerprint":     fingerprint,

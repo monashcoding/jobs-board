@@ -97,6 +97,7 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 				Locations:      locations,
 				StudyFields:    studyFields,
 				WorkingRights:  workingRights,
+				Source:         models.GRADCONNECTION,
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),
 			}

@@ -3,13 +3,14 @@ package linkedin
 import (
 	"context"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
-	"github.com/monashcoding/mploy-golang-core/internal/utils"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 type Job struct {
@@ -122,6 +123,7 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 		WFHStatus:      nil, // TODO: WFH Status
 		StudyFields:    nil,
 		WorkingRights:  nil,
+		Source:         models.LINKEDIN,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
