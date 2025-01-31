@@ -15,8 +15,8 @@ import (
 )
 
 type LinkedInScraper struct {
-	unblocker unblocker.Service
-	baseURL   string
+	unblocker   unblocker.Service
+	baseURL     string
 	maxListings int
 }
 

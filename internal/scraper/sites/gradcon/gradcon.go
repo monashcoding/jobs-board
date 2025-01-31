@@ -16,8 +16,8 @@ import (
 type GradconScraper struct {
 	unblocker unblocker.Service
 	baseURL   string
-	maxPages int
-	pageSize int
+	maxPages  int
+	pageSize  int
 	scrapeAll bool
 }
 
@@ -136,8 +136,8 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 
 	for i := 0; i < s.maxPages; i++ {
 		utils.Log("Scraping GradConnect: Page %d of %d...", i+1, s.maxPages)
-
-		newListings, newCompanyIds, err := s.PerformAPIScrape(i * s.pageSize, s.pageSize)
+    
+		newListings, newCompanyIds, err := s.PerformAPIScrape(i*s.pageSize, s.pageSize)
 		if errors.Is(err, ErrNoMoreResults) {
 			utils.Log("Reached end of available listings")
 			break

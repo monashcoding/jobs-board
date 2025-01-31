@@ -119,21 +119,27 @@ func RunScraper() {
 	// Initialize scrapers
 	var scrapers []scraper.Scraper
 	if config.RunGradConnection {
-			gradconScraper := gradcon.NewGradconScraper()
-			// Set GradConnection specific settings
-			gradconScraper.SetPageSize(config.GradConnectionPageSize)
-			gradconScraper.SetMaxPages(config.GradConnectionMaxPages)
-			gradconScraper.SetScrapeAll(config.GradConnectionScrapeAll)
+		gradconScraper := gradcon.NewGradconScraper()
+		// Set GradConnection specific settings
+		gradconScraper.SetPageSize(config.GradConnectionPageSize)
+		gradconScraper.SetMaxPages(config.GradConnectionMaxPages)
+		gradconScraper.SetScrapeAll(config.GradConnectionScrapeAll)
 
-			scrapers = append(scrapers, gradconScraper)
+		scrapers = append(scrapers, gradconScraper)
 	}
 	if config.RunProsple {
-			prospleScraper := prosple.NewProspleScraper()
-			// Set Prosple specific settings
-			prospleScraper.SetPageSize(config.ProsplePageSize)
-			prospleScraper.SetMaxPages(config.ProspleMaxPages)
-			prospleScraper.SetScrapeAll(config.ProspleScrapeAll)
-			scrapers = append(scrapers, prospleScraper)
+		prospleScraper := prosple.NewProspleScraper()
+		// Set Prosple specific settings
+		prospleScraper.SetPageSize(config.ProsplePageSize)
+		prospleScraper.SetMaxPages(config.ProspleMaxPages)
+		prospleScraper.SetScrapeAll(config.ProspleScrapeAll)
+		scrapers = append(scrapers, prospleScraper)
+	}
+	if config.RunLinkedIn {
+		linkedinScraper := linkedin.NewLinkedInScraper()
+		// Set LinkedIn specific settings
+		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
+		scrapers = append(scrapers, linkedinScraper)
 	}
 	if config.RunLinkedIn {
 			linkedinScraper := linkedin.NewLinkedInScraper()
@@ -152,22 +158,22 @@ func RunScraper() {
 	var pipelineSteps []pipeline.Step
 
 	if config.RunWriteJson {
-			pipelineSteps = append(pipelineSteps, steps.NewWriteJSONStep())
+		pipelineSteps = append(pipelineSteps, steps.NewWriteJSONStep())
 	}
 	if config.RunNormalisation {
-			pipelineSteps = append(pipelineSteps, steps.NewNormalisationStep())
+		pipelineSteps = append(pipelineSteps, steps.NewNormalisationStep())
 	}
 	if config.RunDeduplication {
-			pipelineSteps = append(pipelineSteps, steps.NewDeduplicationStep())
+		pipelineSteps = append(pipelineSteps, steps.NewDeduplicationStep())
 	}
 	if config.RunSynchronisation {
-			pipelineSteps = append(pipelineSteps, steps.NewSynchronisationStep())
+		pipelineSteps = append(pipelineSteps, steps.NewSynchronisationStep())
 	}
 	if config.RunAiParser {
-			pipelineSteps = append(pipelineSteps, steps.NewAiParserStep())
+		pipelineSteps = append(pipelineSteps, steps.NewAiParserStep())
 	}
 	if config.RunUpload {
-			pipelineSteps = append(pipelineSteps, mvpUpload)
+		pipelineSteps = append(pipelineSteps, mvpUpload)
 	}
 
 	// Collect all listings from scrapers

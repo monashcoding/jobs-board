@@ -14,8 +14,8 @@ import (
 
 type ProspleScraper struct {
 	unblocker unblocker.Service
-	maxPages int
-	pageSize int
+	maxPages  int
+	pageSize  int
 	scrapeAll bool
 }
 
@@ -107,7 +107,7 @@ func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 		for i := 0; ; i++ {
 			utils.Log("Fully Scraping Prosple: Page %d", i+1)
 
-			newListings, err := s.PerformGraphQLScrape(i * s.pageSize, s.pageSize)
+			newListings, err := s.PerformGraphQLScrape(i*s.pageSize, s.pageSize)
 
 			if err != nil {
 				return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
@@ -129,7 +129,7 @@ func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	for i := 0; i < s.maxPages; i++ {
 		utils.Log("Scraping Prosple: Page %d of %d...", i+1, s.maxPages)
 
-		newListings, err := s.PerformGraphQLScrape(i * s.pageSize, s.pageSize)
+		newListings, err := s.PerformGraphQLScrape(i*s.pageSize, s.pageSize)
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to scrape Prosple: %v", err)

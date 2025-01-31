@@ -31,12 +31,12 @@ func (p *Pipeline) Run(ctx context.Context, listings []models.Listing) ([]models
 	currentListings := listings
 
 	for _, step := range p.steps {
-		utils.Log("%s", "Running step: " + step.Name())
+		utils.Log("%s", "Running step: "+step.Name())
 		currentListings, err = step.Process(ctx, currentListings)
 		if err != nil {
 			return nil, fmt.Errorf("error in %s step: %w", step.Name(), err)
 		}
-		utils.Log("%s", "Finished step: " + step.Name())
+		utils.Log("%s", "Finished step: "+step.Name())
 	}
 
 	return currentListings, nil
