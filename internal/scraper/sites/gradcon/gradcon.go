@@ -136,7 +136,7 @@ func (s *GradconScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 
 	for i := 0; i < s.maxPages; i++ {
 		utils.Log("Scraping GradConnect: Page %d of %d...", i+1, s.maxPages)
-    
+
 		newListings, newCompanyIds, err := s.PerformAPIScrape(i*s.pageSize, s.pageSize)
 		if errors.Is(err, ErrNoMoreResults) {
 			utils.Log("Reached end of available listings")

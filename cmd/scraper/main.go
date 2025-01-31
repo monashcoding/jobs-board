@@ -142,10 +142,10 @@ func RunScraper() {
 		scrapers = append(scrapers, linkedinScraper)
 	}
 	if config.RunLinkedIn {
-			linkedinScraper := linkedin.NewLinkedInScraper()
-			// Set LinkedIn specific settings
-			linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
-			scrapers = append(scrapers, linkedinScraper)
+		linkedinScraper := linkedin.NewLinkedInScraper()
+		// Set LinkedIn specific settings
+		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
+		scrapers = append(scrapers, linkedinScraper)
 	}
 	
 
