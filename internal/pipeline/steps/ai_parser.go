@@ -26,12 +26,19 @@ func (s *AIParserStep) Name() string {
 func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
 	parsedListings := []models.Listing{} // process and insert listings
 
-	utils.Log("Runnings %d listings through AI Parser", len(listings))
+	utils.Log("Running %d listings through AI Parser", len(listings))
 
 	for _, listing := range listings {
+		utils.Debug("Processing listing")
+
 		listing, err := FixDescriptionFormat(listing)
 		if err != nil {
 			utils.Warn("Failed to Fix Description Format: %v", err)
+		}
+
+		listing, err = GetIndustryField(listing)
+		if err != nil {
+			utils.Warn("Failed to get industry field: %v", err)
 		}
 
 		// Append the normalised listing to the result slice
@@ -46,7 +53,6 @@ type ChatRequest struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	} `json:"messages"`
-	N int `json:"n"`
 }
 
 type ChatResponse struct {
@@ -74,46 +80,12 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 				{Role: "system", Content: "You are a helpful assistant."},
 				{Role: "user", Content: "Fix the description by adding appropriate HTML tags. Only return the modified description as plain text without any additional words or explanation: " + *listing.Description},
 			},
-			N: 1,
 		}
 
-		// Convert the request to JSON
-		requestBody, err := json.Marshal(chatRequest)
+		// Make the request
+		chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
 		if err != nil {
-			utils.Error("Error marshalling request: %v", err)
-		}
-
-		// Make the HTTP request
-		client := &http.Client{}
-		req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(requestBody))
-		if err != nil {
-			utils.Error("Error creating request: %v", err)
-		}
-
-		// Set the necessary headers
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("api-key", apiKey)
-
-		// Execute the request
-		resp, err := client.Do(req)
-		if err != nil {
-			utils.Error("Error making request: %v", err)
-		}
-		// Log remaining tokens
-		utils.Debug("Remaining Tokens: %s", resp.Header["X-Ratelimit-Remaining-Tokens"])
-		defer resp.Body.Close()
-
-		// Read and print the response
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			utils.Error("Error reading response: %v", err)
-		}
-
-		// Parse the response JSON
-		var chatResponse ChatResponse
-		err = json.Unmarshal(body, &chatResponse)
-		if err != nil {
-			utils.Error("Error unmarshalling response: %v", err)
+			return listing, err
 		}
 
 		// Output the assistant's response
@@ -125,9 +97,106 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 		} else {
 			utils.Error("No response received.")
 		}
+	} else {
+		utils.Debug("Description already has HTML tags.")
 	}
 	// Replace all /n
 	*listing.Description = strings.ReplaceAll(*listing.Description, "\n", "")
 
 	return listing, nil
+}
+
+func GetIndustryField(listing models.Listing) (models.Listing, error) {
+	// Set endpoint and API key
+	endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
+	apiKey := os.Getenv("AZ_API_KEY")
+
+	// Construct the request body
+	chatRequest := ChatRequest{
+		Messages: []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}{
+			{Role: "system", Content: "You are a helpful assistant."},
+			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, OTHER_INDUSTRY. \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
+		},
+	}
+
+	// Make the request
+	chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
+	if err != nil {
+		return listing, err
+	}
+
+	// Output the assistant's response
+	if len(chatResponse.Choices) > 0 {
+		industryField := chatResponse.Choices[0].Message.Content
+		// utils.Debug("Industry Field: %s", industryField)
+
+		// Define a map for quick lookup
+		industryMap := map[string]models.IndustryField{
+			"CONSULTING":         models.CONSULTING,
+			"BANKS":              models.BANKS,
+			"BIG_TECH":           models.BIG_TECH,
+			"TECH":               models.TECH,
+			"QUANT_TRADING":      models.QUANT_TRADING,
+			"ENERGY":             models.ENERGY,
+			"GOVERNMENT":         models.GOVERNMENT,
+			"MANUFACTURING":      models.MANUFACTURING,
+			"TELECOMMUNICATIONS": models.TELECOMMUNICATIONS,
+			"OTHER_INDUSTRY":     models.OTHER_INDUSTRY,
+		}
+
+		// Lookup the industry field
+		listing.IndustryField = industryMap[industryField]
+
+	} else {
+		utils.Error("No response received.")
+	}
+
+	return listing, nil
+}
+
+func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (ChatResponse, error) {
+	var chatResponse ChatResponse
+
+	// Convert the request to JSON
+	requestBody, err := json.Marshal(chatRequest)
+	if err != nil {
+		return chatResponse, err
+	}
+
+	// Make the HTTP request
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return chatResponse, err
+	}
+
+	// Set the necessary headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("api-key", apiKey)
+
+	// Execute the request
+	resp, err := client.Do(req)
+	if err != nil {
+		return chatResponse, err
+	}
+	defer resp.Body.Close()
+
+	// Log remaining tokens
+	utils.Debug("Remaining Tokens: %s", resp.Header["X-Ratelimit-Remaining-Tokens"])
+
+	// Read and parse the response
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return chatResponse, err
+	}
+
+	err = json.Unmarshal(body, &chatResponse)
+	if err != nil {
+		return chatResponse, err
+	}
+
+	return chatResponse, nil
 }

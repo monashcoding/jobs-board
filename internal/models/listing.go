@@ -61,12 +61,16 @@ type Company struct {
 type IndustryField string
 
 const (
-	CONSULTING     IndustryField = "CONSULTING"
-	BANKS          IndustryField = "BANKS"
-	BIG_TECH       IndustryField = "BIG_TECH"
-	TECH           IndustryField = "TECH"
-	QUANT_TRADING  IndustryField = "QUANT_TRADING"
-	OTHER_INDUSTRY IndustryField = "OTHER_INDUSTRY"
+	CONSULTING         IndustryField = "CONSULTING"
+	BANKS              IndustryField = "BANKS"
+	BIG_TECH           IndustryField = "BIG_TECH"
+	TECH               IndustryField = "TECH"
+	QUANT_TRADING      IndustryField = "QUANT_TRADING"
+	ENERGY             IndustryField = "ENERGY"
+	GOVERNMENT         IndustryField = "GOVERNMENT"
+	MANUFACTURING      IndustryField = "MANUFACTURING"
+	TELECOMMUNICATIONS IndustryField = "TELECOMMUNICATIONS"
+	OTHER_INDUSTRY     IndustryField = "OTHER_INDUSTRY"
 )
 
 type Source string

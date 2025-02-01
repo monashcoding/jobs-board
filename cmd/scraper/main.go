@@ -147,7 +147,6 @@ func RunScraper() {
 		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
 		scrapers = append(scrapers, linkedinScraper)
 	}
-	
 
 	mvpUpload := steps.NewMVPUploadStep(mongodb, config.Version)
 	utils.SetLogHandler(func(log string) {
