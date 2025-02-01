@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
@@ -24,28 +26,52 @@ func (s *AIParserStep) Name() string {
 }
 
 func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
-	parsedListings := []models.Listing{} // process and insert listings
+	parsedListings := make([]models.Listing, len(listings)) // Preallocate slice
+	utils.Log("Running %d listings through AI Parser in parallel", len(listings))
 
-	utils.Log("Running %d listings through AI Parser", len(listings))
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(listings)) // Buffered channel for errors
 
-	for _, listing := range listings {
-		utils.Debug("Processing listing")
+	for i, listing := range listings {
+		wg.Add(1)
 
-		listing, err := FixDescriptionFormat(listing)
-		if err != nil {
-			utils.Warn("Failed to Fix Description Format: %v", err)
+		// Process each listing in a separate Goroutine
+		go func(i int, listing models.Listing) {
+			defer wg.Done()
+
+			// Fix description
+			updatedListing, err := FixDescriptionFormat(listing)
+			if err != nil {
+				utils.Warn("Failed to fix description format: %v", err)
+				errCh <- err
+			}
+
+			// Get industry field
+			updatedListing, err = GetIndustryField(updatedListing)
+			if err != nil {
+				utils.Warn("Failed to get industry field: %v", err)
+				errCh <- err
+			}
+
+			// Store the processed listing in the correct index
+			parsedListings[i] = updatedListing
+		}(i, listing)
+	}
+	// Wait for all Goroutines to complete
+	wg.Wait()
+	close(errCh)
+
+	// Collect errors
+	var finalErr error
+	for err := range errCh {
+		if finalErr == nil {
+			finalErr = err
+		} else {
+			finalErr = fmt.Errorf("%v; %v", finalErr, err)
 		}
-
-		listing, err = GetIndustryField(listing)
-		if err != nil {
-			utils.Warn("Failed to get industry field: %v", err)
-		}
-
-		// Append the normalised listing to the result slice
-		parsedListings = append(parsedListings, listing)
 	}
 
-	return parsedListings, nil
+	return parsedListings, finalErr
 }
 
 type ChatRequest struct {
