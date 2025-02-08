@@ -70,6 +70,8 @@ const (
 	GOVERNMENT         IndustryField = "GOVERNMENT"
 	MANUFACTURING      IndustryField = "MANUFACTURING"
 	TELECOMMUNICATIONS IndustryField = "TELECOMMUNICATIONS"
+	RETAIL             IndustryField = "RETAIL"
+	TRANSPORTATION     IndustryField = "TRANSPORTATION"
 	OTHER_INDUSTRY     IndustryField = "OTHER_INDUSTRY"
 )
 

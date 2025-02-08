@@ -144,7 +144,7 @@ func GetIndustryField(listing models.Listing) (models.Listing, error) {
 			Content string `json:"content"`
 		}{
 			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, OTHER_INDUSTRY. \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
+			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, RETAIL, TRANSPORTATION, OTHER_INDUSTRY. \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
 		},
 	}
 
