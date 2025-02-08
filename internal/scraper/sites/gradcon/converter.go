@@ -219,13 +219,13 @@ func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]mode
 
 	// Define the mapping between GradConnect work rights and MPLOY work rights
 	workRightMapping := map[string]models.WorkingRight{
-		"Australian Permanent Resident":           models.AUS_PR,
-		"Australian Citizen":                      models.AUS_CITIZEN,
-		"Australian Working Visa":                 models.WORK_VISA,
-		"Australian Bridging Visa":                models.WORK_VISA,
+		"Australian Permanent Resident":           models.AUS_CITIZEN_PR,
+		"Australian Citizen":                      models.AUS_CITIZEN_PR,
+		"Australian Working Visa":                 models.INTERNATIONAL,
+		"Australian Bridging Visa":                models.INTERNATIONAL,
 		"Australian Student Visa":                 models.INTERNATIONAL,
-		"Australian Skilled Migration Visa (485)": models.WORK_VISA,
-		"New Zealand Citizen":                     models.NZ_CITIZEN,
+		"Australian Skilled Migration Visa (485)": models.INTERNATIONAL,
+		"New Zealand Citizen":                     models.NZ_CITIZEN_PR,
 	}
 
 	// Initialize the result array
@@ -241,6 +241,19 @@ func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]mode
 			workingRights = append(workingRights, models.OTHER_RIGHTS)
 		}
 	}
+
+	// Remove duplicates from workingRights
+	uniqueWorkingRights := []models.WorkingRight{}
+	seenRights := map[models.WorkingRight]struct{}{}
+
+	for _, right := range workingRights {
+		if _, seen := seenRights[right]; !seen {
+			uniqueWorkingRights = append(uniqueWorkingRights, right)
+			seenRights[right] = struct{}{}
+		}
+	}
+
+	workingRights = uniqueWorkingRights
 
 	return workingRights, nil
 }

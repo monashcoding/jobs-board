@@ -148,17 +148,17 @@ func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models
 
 	// Predefined working rights mapping
 	workingRightsMap := map[string]models.WorkingRight{
-		"Australian Permanent Resident":       models.AUS_PR,
-		"Australian Citizen":                  models.AUS_CITIZEN,
-		"New Zealand Citizen":                 models.NZ_CITIZEN,
-		"New Zealand Permanent Resident":      models.NZ_PR,
+		"Australian Permanent Resident":       models.AUS_CITIZEN_PR,
+		"Australian Citizen":                  models.AUS_CITIZEN_PR,
+		"New Zealand Citizen":                 models.NZ_CITIZEN_PR,
+		"New Zealand Permanent Resident":      models.NZ_CITIZEN_PR,
 		"International Student/Graduate Visa": models.INTERNATIONAL,
-		"New Zealand Temporary Work Visa":     models.WORK_VISA,
+		"New Zealand Temporary Work Visa":     models.INTERNATIONAL,
 		"New Zealand Student Visa":            models.INTERNATIONAL,
-		"Hong Kong Citizen":                   models.WORK_VISA,
-		"Australian Work Visa (All Other)":    models.WORK_VISA,
-		"Visa Sponsorship Included":           models.VISA_SPONSORED,
-		"Hong Kong Permanent Resident":        models.WORK_VISA,
+		"Hong Kong Citizen":                   models.INTERNATIONAL,
+		"Australian Work Visa (All Other)":    models.INTERNATIONAL,
+		"Visa Sponsorship Included":           models.INTERNATIONAL,
+		"Hong Kong Permanent Resident":        models.INTERNATIONAL,
 	}
 
 	workingRights := []models.WorkingRight{}
@@ -196,6 +196,19 @@ func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models
 			}
 		}
 	}
+
+	// Remove duplicates from workingRights
+	uniqueWorkingRights := []models.WorkingRight{}
+	seenRights := map[models.WorkingRight]struct{}{}
+
+	for _, right := range workingRights {
+		if _, seen := seenRights[right]; !seen {
+			uniqueWorkingRights = append(uniqueWorkingRights, right)
+			seenRights[right] = struct{}{}
+		}
+	}
+
+	workingRights = uniqueWorkingRights
 
 	return workingRights, nil
 }

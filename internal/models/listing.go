@@ -42,13 +42,9 @@ const (
 type WorkingRight string
 
 const (
-	AUS_CITIZEN    WorkingRight = "AUS_CITIZEN"
-	AUS_PR         WorkingRight = "AUS_PR"
-	NZ_CITIZEN     WorkingRight = "NZ_CITIZEN"
-	NZ_PR          WorkingRight = "NZ_PR"
+	AUS_CITIZEN_PR WorkingRight = "AUS_CITIZEN_PR"
+	NZ_CITIZEN_PR  WorkingRight = "NZ_CITIZEN_PR"
 	INTERNATIONAL  WorkingRight = "INTERNATIONAL"
-	WORK_VISA      WorkingRight = "WORK_VISA"
-	VISA_SPONSORED WorkingRight = "VISA_SPONSORED"
 	OTHER_RIGHTS   WorkingRight = "OTHER_RIGHTS"
 )
 
