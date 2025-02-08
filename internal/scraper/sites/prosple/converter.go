@@ -116,6 +116,22 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 		}
 	}
 
+	// Look through locations and if there is australia and one of the states, remove australia
+	if len(locations) > 1 {
+		for i, location := range locations {
+			if location == models.AUSTRALIA {
+				for _, state := range locations {
+					if state != models.AUSTRALIA && state != models.OTHERS {
+						locations = append(locations[:i], locations[i+1:]...)
+						break
+					}
+				}
+			}
+		}
+	} else if len(locations) < 1 {
+		locations = append(locations, models.AUSTRALIA)
+	}
+
 	return locations, nil
 }
 

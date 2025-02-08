@@ -151,6 +151,33 @@ func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]model
 		}
 	}
 
+	// Look through locations and if there is australia and one of the states, remove australia
+	if len(locations) > 1 {
+		for i, location := range locations {
+			if location == models.AUSTRALIA {
+				for _, state := range locations {
+					if state != models.AUSTRALIA && state != models.OTHERS {
+						locations = append(locations[:i], locations[i+1:]...)
+						break
+					}
+				}
+			}
+		}
+	} else if len(locations) < 1 {
+		locations = append(locations, models.AUSTRALIA)
+	}
+
+	// Use sets to ensure no duplicates
+	uniqueLocations := make(map[models.LocationType]bool)
+	for _, location := range locations {
+		uniqueLocations[location] = true
+	}
+
+	locations = []models.LocationType{}
+	for location := range uniqueLocations {
+		locations = append(locations, location)
+	}
+
 	return locations, nil
 }
 
@@ -187,7 +214,7 @@ func GetGradConOpenDate(campaign GradConnectCampaign) *time.Time {
 }
 
 func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]models.WorkingRight, error) {
-	// TODO:: Extend this to match working right type names to our Enum
+	// Extend this to match working right type names to our Enum
 	// Related Ticket (https://www.notion.so/monashcoding/GradConnect-Scraper-Standardise-JobType-Location-and-Work-Right-Strings-15f1e0829dd88047b4f3d98aba2e309b)
 
 	// Define the mapping between GradConnect work rights and MPLOY work rights

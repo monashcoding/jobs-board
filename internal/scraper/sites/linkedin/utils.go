@@ -32,11 +32,22 @@ func parseLocations(location string) []models.LocationType {
 	locations := []models.LocationType{}
 
 	// Simple mapping of common locations
-	// TODO: Expand this
 	if strings.Contains(location, "Melbourne") {
 		locations = append(locations, models.VIC)
 	} else if strings.Contains(location, "Sydney") {
 		locations = append(locations, models.NSW)
+	} else if strings.Contains(location, "Brisbane") {
+		locations = append(locations, models.QLD)
+	} else if strings.Contains(location, "Perth") {
+		locations = append(locations, models.WA)
+	} else if strings.Contains(location, "Adelaide") {
+		locations = append(locations, models.SA)
+	} else if strings.Contains(location, "Canberra") {
+		locations = append(locations, models.ACT)
+	} else if strings.Contains(location, "Hobart") {
+		locations = append(locations, models.TAS)
+	} else if strings.Contains(location, "Darwin") {
+		locations = append(locations, models.NT)
 	} else {
 		locations = append(locations, models.AUSTRALIA)
 	}
