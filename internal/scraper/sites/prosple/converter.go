@@ -219,7 +219,7 @@ func ProspleJobTypeToMPLOYJobType(jobtype string) (models.JobType, error) {
 	// Define a map that maps Prosple job types to MPLOY job types
 	jobTypeMap := map[string]models.JobType{
 		"Volunteering":                       models.OTHER,
-		"Part-Time Student Job":              models.FIRST_YEAR,
+		"Part-Time Student Job":              models.PRE_PENULTIMATE,
 		"Graduate Job or Program":            models.GRADUATE,
 		"Virtual Experience":                 models.OTHER,
 		"Internship, Clerkship or Placement": models.INTERN,

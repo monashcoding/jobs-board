@@ -9,11 +9,11 @@ import (
 type JobType string
 
 const (
-	EOI        JobType = "EOI"
-	FIRST_YEAR JobType = "FIRST_YEAR"
-	INTERN     JobType = "INTERN"
-	GRADUATE   JobType = "GRADUATE"
-	OTHER      JobType = "OTHER"
+	EOI             JobType = "EOI"
+	PRE_PENULTIMATE JobType = "PRE_PENULTIMATE"
+	INTERN          JobType = "INTERN"
+	GRADUATE        JobType = "GRADUATE"
+	OTHER           JobType = "OTHER"
 )
 
 type LocationType string
