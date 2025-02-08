@@ -47,7 +47,7 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 			}
 
 			// Get industry field
-			updatedListing, err = GetIndustryField(updatedListing)
+			updatedListing, err = GetIndustryFieldandType(updatedListing)
 			if err != nil {
 				utils.Warn("Failed to get industry field: %v", err)
 				errCh <- err
@@ -132,7 +132,7 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 	return listing, nil
 }
 
-func GetIndustryField(listing models.Listing) (models.Listing, error) {
+func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
 	// Set endpoint and API key
 	endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
 	apiKey := os.Getenv("AZ_API_KEY")
@@ -144,7 +144,7 @@ func GetIndustryField(listing models.Listing) (models.Listing, error) {
 			Content string `json:"content"`
 		}{
 			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, RETAIL, TRANSPORTATION, OTHER_INDUSTRY. \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
+			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, OTHER_INDUSTRY followed by whether it is an INTERN, GRADUATE or OTHER job type. Output in the form: INDUSTRY#JOBTYPE \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
 		},
 	}
 
@@ -156,8 +156,9 @@ func GetIndustryField(listing models.Listing) (models.Listing, error) {
 
 	// Output the assistant's response
 	if len(chatResponse.Choices) > 0 {
-		industryField := chatResponse.Choices[0].Message.Content
-		// utils.Debug("Industry Field: %s", industryField)
+		splitResponse := strings.Split(chatResponse.Choices[0].Message.Content, "#")
+		industryField := strings.TrimSpace(splitResponse[0])
+		jobType := strings.TrimSpace(splitResponse[1])
 
 		// Define a map for quick lookup
 		industryMap := map[string]models.IndustryField{
@@ -175,6 +176,19 @@ func GetIndustryField(listing models.Listing) (models.Listing, error) {
 
 		// Lookup the industry field
 		listing.IndustryField = industryMap[industryField]
+
+		// Create a map for job types
+		jobTypeMap := map[string]models.JobType{
+			"INTERN":   models.INTERN,
+			"GRADUATE": models.GRADUATE,
+			"OTHER":    models.OTHER,
+		}
+
+		// If job type is nil, then set jobtype
+		if listing.Type == nil {
+			jobTypeValue := jobTypeMap[jobType]
+			listing.Type = &jobTypeValue
+		}
 
 	} else {
 		utils.Error("No response received.")
