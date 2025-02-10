@@ -53,6 +53,13 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 				errCh <- err
 			}
 
+			// Generate one liner description
+			updatedListing, err = GenerateOneLinerDesc(updatedListing)
+			if err != nil {
+				utils.Warn("Failed to generate one liner description: %v", err)
+				errCh <- err
+			}
+
 			// Store the processed listing in the correct index
 			parsedListings[i] = updatedListing
 		}(i, listing)
@@ -122,6 +129,7 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 			*listing.Description = desc
 		} else {
 			utils.Error("No response received.")
+			utils.Debug("chatRequest: %v", chatRequest)
 		}
 	} else {
 		utils.Debug("Description already has HTML tags.")
@@ -192,6 +200,7 @@ func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
 
 	} else {
 		utils.Error("No response received.")
+		utils.Debug("chatRequest: %v", chatRequest)
 	}
 
 	return listing, nil
@@ -239,4 +248,45 @@ func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (C
 	}
 
 	return chatResponse, nil
+}
+
+// Generate one liner description
+func GenerateOneLinerDesc(listing models.Listing) (models.Listing, error) {
+	// Skip if one liner description is already present
+	if listing.OneLinerDesc == nil {
+		// Set endpoint and API key
+		endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
+		apiKey := os.Getenv("AZ_API_KEY")
+
+		// Construct the request body
+		chatRequest := ChatRequest{
+			Messages: []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			}{
+				{Role: "system", Content: "You are a helpful assistant."},
+				{Role: "user", Content: "Generate a one-liner description based on the description, include the tech stack of the job. Respond with only the one-liner description: \n\n" + "\nDescription: " + *listing.Description},
+			},
+		}
+
+		// Make the request
+		chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
+		if err != nil {
+			return listing, err
+		}
+
+		// Output the assistant's response
+		if err == nil && len(chatResponse.Choices) > 0 {
+			oneLinerDesc := chatResponse.Choices[0].Message.Content
+			oneLinerDescStr := strings.TrimSpace(oneLinerDesc)
+			listing.OneLinerDesc = &oneLinerDescStr
+		} else {
+			utils.Error("No response received.")
+			utils.Debug("chatRequest: %v", chatRequest)
+		}
+	} else {
+		utils.Debug("One liner description already exists.")
+	}
+
+	return listing, nil
 }

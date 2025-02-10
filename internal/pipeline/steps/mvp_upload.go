@@ -145,6 +145,7 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 				"$set": bson.M{
 					"title":           listing.Title,
 					"description":     listing.Description,
+					"one_liner":       listing.OneLinerDesc,
 					"company":         listing.Company,
 					"application_url": listing.ApplicationURL,
 					"wfh_status":      listing.WFHStatus,

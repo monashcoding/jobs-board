@@ -84,6 +84,7 @@ type Listing struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Title          string             `bson:"title" json:"title"`
 	Description    *string            `bson:"description" json:"description"`
+	OneLinerDesc   *string            `bson:"one_liner_desc" json:"one_liner_desc"`
 	Company        Company            `bson:"company" json:"company"`
 	ApplicationURL *string            `bson:"application_url" json:"application_url"`
 	WFHStatus      *WFHStatus         `bson:"wfh_status" json:"wfh_status"`
