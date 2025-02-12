@@ -97,6 +97,7 @@ type Listing struct {
 	StudyFields    []string           `bson:"study_fields" json:"study_fields"`
 	IndustryField  IndustryField      `bson:"industry_field" json:"industry_field"`
 	WorkingRights  []WorkingRight     `bson:"working_rights" json:"working_rights"`
+	IsSponsored    bool               `bson:"is_sponsored" json:"is_sponsored"`
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
 }

@@ -157,6 +157,7 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 					"working_rights":  listing.WorkingRights,
 					"industry_field":  listing.IndustryField,
 					"source":          listing.Source,
+					"is_sponsored":    listing.IsSponsored,
 					"version":         s.version,
 					"updated_at":      now,
 					"outdated":        false,

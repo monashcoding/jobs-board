@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -145,6 +146,11 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 			utils.Warn("Failed to Standardise Company Name: %v", err)
 		}
 
+		listing, err = AddSponsoredCompanies(listing)
+		if err != nil {
+			utils.Warn("Failed to add sponsored companies: %v", err)
+		}
+
 		// Append the normalised listing to the result slice
 		normalised = append(normalised, listing)
 	}
@@ -264,5 +270,26 @@ func StandardiseCompanyName(listing models.Listing) (models.Listing, error) {
 
 	listing.Company.Name = standardisedName
 
+	return listing, nil
+}
+
+func AddSponsoredCompanies(listing models.Listing) (models.Listing, error) {
+	// Load .env file
+	sponsoredCompaniesStr := os.Getenv("SPONSORED_COMPANIES")
+
+	// Convert sponsoredCompaniesStr to list of strings
+	var sponsoredCompanies []string
+	for _, company := range strings.Split(sponsoredCompaniesStr, ",") {
+		sponsoredCompanies = append(sponsoredCompanies, strings.TrimSpace(company))
+	}
+
+	// If the company name is in the list of sponsored companies, set the listing as sponsored
+	for _, company := range sponsoredCompanies {
+		if strings.EqualFold(listing.Company.Name, company) {
+			listing.IsSponsored = true
+			break
+		}
+	}
+	utils.Debug("Listing: %+v", listing)
 	return listing, nil
 }
