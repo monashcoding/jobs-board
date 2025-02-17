@@ -290,6 +290,5 @@ func AddSponsoredCompanies(listing models.Listing) (models.Listing, error) {
 			break
 		}
 	}
-	utils.Debug("Listing: %+v", listing)
 	return listing, nil
 }

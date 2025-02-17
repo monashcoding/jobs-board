@@ -265,7 +265,7 @@ func GenerateOneLinerDesc(listing models.Listing) (models.Listing, error) {
 				Content string `json:"content"`
 			}{
 				{Role: "system", Content: "You are a helpful assistant."},
-				{Role: "user", Content: "Generate a one-liner description based on the description, include the tech stack of the job. Respond with only the one-liner description: \n\n" + "\nDescription: " + *listing.Description},
+				{Role: "user", Content: "Generate a concise one-liner description which outlines the tech stack of the job in the form: 'Apply your [tech stack] skills on [projects]'. Respond with only the one-liner description: \n\n" + "\nDescription: " + *listing.Description},
 			},
 		}
 
