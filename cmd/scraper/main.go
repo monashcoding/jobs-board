@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/janestreet"
 	"os"
 	"os/signal"
 	"syscall"
@@ -146,6 +147,10 @@ func RunScraper() {
 		// Set LinkedIn specific settings
 		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
 		scrapers = append(scrapers, linkedinScraper)
+	}
+	if config.RunJaneStreet {
+		janeStreetScraper := janestreet.NewJaneStreetScraper()
+		scrapers = append(scrapers, janeStreetScraper)
 	}
 
 	mvpUpload := steps.NewMVPUploadStep(mongodb, config.Version)
