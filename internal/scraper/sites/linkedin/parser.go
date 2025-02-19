@@ -126,6 +126,7 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 		Source:         models.LINKEDIN,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
+		Days_lived:     0,
 	}
 
 	return listing, nil

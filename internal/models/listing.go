@@ -84,7 +84,7 @@ type Listing struct {
 	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Title          string             `bson:"title" json:"title"`
 	Description    *string            `bson:"description" json:"description"`
-	OneLinerDesc   *string            `bson:"one_liner_desc" json:"one_liner_desc"`
+	OneLinerDesc   *string            `bson:"one_liner" json:"one_liner"`
 	Company        Company            `bson:"company" json:"company"`
 	ApplicationURL *string            `bson:"application_url" json:"application_url"`
 	WFHStatus      *WFHStatus         `bson:"wfh_status" json:"wfh_status"`
@@ -100,4 +100,5 @@ type Listing struct {
 	IsSponsored    bool               `bson:"is_sponsored" json:"is_sponsored"`
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
+	Days_lived     int                `bson:"days_lived" json:"days_lived"`
 }

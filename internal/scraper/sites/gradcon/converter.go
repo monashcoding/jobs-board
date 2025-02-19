@@ -100,6 +100,7 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 				Source:         models.GRADCONNECTION,
 				CreatedAt:      time.Now(),
 				UpdatedAt:      time.Now(),
+				Days_lived:     0,
 			}
 
 			listings = append(listings, listing)

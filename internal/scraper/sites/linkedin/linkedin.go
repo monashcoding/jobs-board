@@ -102,20 +102,11 @@ func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
                 "machine learning" OR 
                 "security engineer" OR 
                 "cyber security" OR 
-                "devops engineer" OR 
-                "site reliability engineer" OR 
-                "sre" OR 
                 "full stack" OR 
                 "frontend engineer" OR 
                 "backend engineer" OR 
                 "cloud engineer" OR 
-                "systems engineer" OR
-                "quantitative trader" OR 
-                "quant developer" OR 
-                "algorithmic trading" OR 
-                "quant analyst" OR 
-                "quantitative analyst" OR 
-                "trading systems"
+                "quantitative trader"
             )`,
 			"location": "Australia",
 			"distance": "50",

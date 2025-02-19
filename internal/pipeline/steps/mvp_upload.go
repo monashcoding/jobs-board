@@ -161,6 +161,7 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 					"version":         s.version,
 					"updated_at":      now,
 					"outdated":        false,
+					"days_lived":      0,
 					"fingerprint":     fingerprint,
 				},
 				"$setOnInsert": bson.M{
@@ -211,6 +212,51 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 	// if err != nil {
 	// 	utils.Error("Failed to insert metadata: %v", err)
 	// }
+
+	// Get listings that are marked as outdated
+	// Set them as false if their days_lived is less than 7 and increment their days_lived by 1
+	// Keep them as true if their days_lived is greater than or equal to 7
+	outdatedListingsCursor, err := activeColl.Find(ctx, bson.M{"outdated": true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to find outdated listings: %w", err)
+	}
+	defer outdatedListingsCursor.Close(ctx)
+
+	var outdatedListings []models.Listing
+	if err = outdatedListingsCursor.All(ctx, &outdatedListings); err != nil {
+		return nil, fmt.Errorf("failed to decode outdated listings: %w", err)
+	}
+
+	for i := 0; i < len(outdatedListings); i += batchSize {
+		end := i + batchSize
+		if end > len(outdatedListings) {
+			end = len(outdatedListings)
+		}
+		batch := outdatedListings[i:end]
+
+		var operations []mongo.WriteModel
+		for _, listing := range batch {
+			if listing.Days_lived >= 7 {
+				continue
+			}
+
+			filter := bson.M{"_id": listing.ID}
+			update := bson.M{
+				"$inc": bson.M{"days_lived": 1},
+				"$set": bson.M{"outdated": false},
+			}
+
+			operations = append(operations, mongo.NewUpdateOneModel().SetFilter(filter).SetUpdate(update))
+		}
+
+		if len(operations) > 0 {
+			opts := options.BulkWrite().SetOrdered(false)
+			_, err := activeColl.BulkWrite(ctx, operations, opts)
+			if err != nil {
+				return nil, fmt.Errorf("failed to update outdated listings batch: %w", err)
+			}
+		}
+	}
 
 	newTotal, _ := activeColl.CountDocuments(ctx, bson.M{})
 	newActive, _ := activeColl.CountDocuments(ctx, bson.M{"outdated": false})

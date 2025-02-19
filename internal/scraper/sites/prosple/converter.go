@@ -57,6 +57,7 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 		Source:         models.PROSPLE,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
+		Days_lived:     0,
 	}, nil
 }
 
