@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  go-script:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mploy-go-scraper
+    volumes:
+      - ./.env:/app/.env
+      - ./cron.txt:/app/cron.txt
+    restart: unless-stopped
