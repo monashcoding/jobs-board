@@ -111,7 +111,7 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 				Content string `json:"content"`
 			}{
 				{Role: "system", Content: "You are a helpful assistant."},
-				{Role: "user", Content: "Fix the description by adding appropriate HTML tags. Only return the modified description as plain text without any additional words or explanation: " + *listing.Description},
+				{Role: "user", Content: "Fix the description by adding appropriate HTML tags, for headings use <h3>. Only return the modified description as plain text without any additional words or explanation: " + *listing.Description},
 			},
 		}
 
@@ -134,8 +134,9 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 	} else {
 		utils.Debug("Description already has HTML tags.")
 	}
-	// Replace all /n
+	// Replace all breaks
 	*listing.Description = strings.ReplaceAll(*listing.Description, "\n", "")
+	*listing.Description = strings.ReplaceAll(*listing.Description, "<br/>", "")
 
 	return listing, nil
 }
@@ -247,6 +248,10 @@ func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (C
 	err = json.Unmarshal(body, &chatResponse)
 	if err != nil {
 		return chatResponse, err
+	}
+
+	if len(chatResponse.Choices) == 0 {
+		utils.Debug("Response body: %s", body)
 	}
 
 	return chatResponse, nil
