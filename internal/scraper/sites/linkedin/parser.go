@@ -108,6 +108,11 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 		}
 	}
 
+	// If application url is "" just use source url
+	if job.ApplyURL == "" {
+		job.ApplyURL = jobURL
+	}
+
 	// Convert to our job model
 	listing := models.Listing{
 		Title:       job.Title,

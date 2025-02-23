@@ -81,6 +81,12 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 			jobUrl := employerUrl + "/jobs/" + campaign.Slug
 			logo := gradConnect.CustomerOrganisation.Logo
 
+			// Fall back to SourceURL if ApplicationURL is empty
+			applicationURL := campaign.OriginTargetURL
+			if applicationURL == "" {
+				applicationURL = jobUrl
+			}
+
 			listing := models.Listing{
 				Title:       campaign.Title,
 				Description: &campaign.Description,
@@ -89,7 +95,7 @@ func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listi
 					Website: &employerUrl,
 					Logo:    &logo,
 				},
-				ApplicationURL: &campaign.OriginTargetURL,
+				ApplicationURL: &applicationURL,
 				SourceURLs:     []string{jobUrl},
 				Type:           &jobType,
 				OpenDate:       openDate,

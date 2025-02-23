@@ -35,7 +35,7 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 	dict := make(map[string]models.Listing)
 
 	for _, listing := range listings {
-		hash := fmt.Sprintf("%s-%s-%s-%s", listing.Title, listing.Company.Name, listing.Locations, *listing.ApplicationURL)
+		hash := fmt.Sprintf("%s-%s", listing.Title, listing.Company.Name)
 
 		existingModel, ok := dict[hash]
 
@@ -52,8 +52,34 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 		uniqueListings = append(uniqueListings, listing)
 	}
 
-	// process and insert listings. objects with existing IDs will be overwritten
-	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings))
+	dict2 := make(map[string]models.Listing)
+	sameURLCompany := utils.GetSameURLCompanyMap()
 
-	return uniqueListings, nil
+	for _, listing := range uniqueListings {
+		var hash string
+		if sameURLCompany[listing.Company.Name] {
+			hash = fmt.Sprintf("%s-%s", listing.Title, listing.Company.Name)
+		} else {
+			hash = fmt.Sprintf("%s", *listing.ApplicationURL)
+		}
+
+		existingModel, ok := dict2[hash]
+
+		if !ok {
+			dict2[hash] = listing
+		} else {
+			existingModel.SourceURLs = append(existingModel.SourceURLs, listing.SourceURLs...)
+			utils.Log("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
+		}
+	}
+
+	var uniqueListings2 []models.Listing
+	for _, listing := range dict2 {
+		uniqueListings2 = append(uniqueListings2, listing)
+	}
+
+	// process and insert listings. objects with existing IDs will be overwritten
+	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings2))
+
+	return uniqueListings2, nil
 }

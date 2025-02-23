@@ -183,7 +183,9 @@ func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
 		}
 
 		// Lookup the industry field
-		listing.IndustryField = industryMap[industryField]
+		if listing.IndustryField == "" {
+			listing.IndustryField = industryMap[industryField]
+		}
 
 		// Create a map for job types
 		jobTypeMap := map[string]models.JobType{

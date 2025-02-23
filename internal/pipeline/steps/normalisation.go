@@ -131,6 +131,10 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 			continue
 		}
 
+		if EmptyApplicationUrl(listing) {
+			continue
+		}
+
 		listing, err := RemoveEmptyStrings(listing)
 		if err != nil {
 			utils.Warn("Failed to remove empty strings: %v", err)
@@ -149,6 +153,11 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 		listing, err = AddSponsoredCompanies(listing)
 		if err != nil {
 			utils.Warn("Failed to add sponsored companies: %v", err)
+		}
+
+		listing, err = HardcodeIndustryField(listing)
+		if err != nil {
+			utils.Warn("Failed to hardcode industry field: %v", err)
 		}
 
 		// Append the normalised listing to the result slice
@@ -190,6 +199,10 @@ func ListingActiveDateIsInFuture(listing models.Listing) bool {
 	}
 
 	return listing.OpenDate.After(time.Now())
+}
+
+func EmptyApplicationUrl(listing models.Listing) bool {
+	return listing.ApplicationURL == nil || strings.TrimSpace(*listing.ApplicationURL) == ""
 }
 
 func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
@@ -290,5 +303,16 @@ func AddSponsoredCompanies(listing models.Listing) (models.Listing, error) {
 			break
 		}
 	}
+	return listing, nil
+}
+
+func HardcodeIndustryField(listing models.Listing) (models.Listing, error) {
+	// Hardcode the industry field based on the company name
+	industryMap := utils.GetIndustryFieldMap()
+
+	if industry, ok := industryMap[listing.Company.Name]; ok {
+		listing.IndustryField = industry
+	}
+
 	return listing, nil
 }
