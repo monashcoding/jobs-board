@@ -38,6 +38,15 @@ func (p *Pipeline) Run(ctx context.Context, listings []models.Listing) ([]models
 		}
 		utils.Log("%s", "Finished step: "+step.Name())
 	}
+	logs := utils.GetLogs()
+	for _, entry := range logs {
+		fmt.Printf("Time: %s, Level: %s, Message: %s\n",
+			entry.Timestamp,
+			entry.Level,
+			entry.Message)
+	}
 
+	// Clear logs if needed
+	utils.ClearLogs()
 	return currentListings, nil
 }

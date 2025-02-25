@@ -268,6 +268,13 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 		oldActive,
 		newActive,
 	)
+	utils.Custom("Inserted %d new listings. Total Listings %d -> %d | Active Listings %d -> %d",
+		newTotal-oldTotal,
+		oldTotal,
+		newTotal,
+		oldActive,
+		newActive,
+	)
 
 	return listings, nil
 }

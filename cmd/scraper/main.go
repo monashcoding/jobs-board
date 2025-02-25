@@ -191,6 +191,7 @@ func RunScraper() {
 			continue
 		}
 		utils.Success("Finished scraper %s with %d listings.", s.Name(), len(listings))
+		utils.Custom("Scraper %s returned %d listings.", s.Name(), len(listings))
 		allListings = append(allListings, listings...)
 	}
 
@@ -204,4 +205,5 @@ func RunScraper() {
 	}
 
 	utils.Success("Pipelines completed.")
+	utils.Custom("Total listings processed: %d", len(allListings), "Pipelines completed.")
 }

@@ -44,6 +44,7 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 		} else {
 			existingModel.SourceURLs = append(existingModel.SourceURLs, listing.SourceURLs...)
 			utils.Log("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
+			utils.Custom("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
 		}
 	}
 
@@ -79,7 +80,8 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 	}
 
 	// process and insert listings. objects with existing IDs will be overwritten
-	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings2))
+	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings))
+	utils.Custom("Deduplication: %d -> %d listings", len(listings), len(uniqueListings))
 
 	return uniqueListings2, nil
 }

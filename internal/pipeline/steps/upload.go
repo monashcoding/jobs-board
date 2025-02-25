@@ -39,19 +39,23 @@ func (s *UploadStep) Process(ctx context.Context, listings []models.Listing) ([]
 	utils.Log("Starting database sync [...]")
 
 	utils.Log("Database sync step 1: Deleting all listings [...]")
+	utils.Custom("Database sync step 1: Deleting all listings [...]")
 
 	err := s.mongoDb.DeleteListings() // Delete all listings
 	if err != nil {
 		utils.Error("[X] Failed to delete listings: %v", err)
 	}
 	utils.Log("Database sync step 1: Successfully deleted all listings [\u2713]")
+	utils.Custom("Database sync step 1: Successfully deleted all listings [\u2713]")
 
 	utils.Log("Database sync step 2: Inserting all listings [...]")
+	utils.Custom("Database sync step 2: Inserting all listings [...]")
 	err = s.mongoDb.CreateListings(listings) // Insert all listings
 	if err != nil {
 		utils.Error("[X] Failed to insert listings: %v", err)
 	}
 	utils.Log("Database sync step 2: Successfully inserted all listings [\u2713]")
+	utils.Custom("Database sync step 2: Successfully inserted all listings [\u2713]")
 
 	dbListings, err := s.mongoDb.GetListings()
 	if err != nil {
@@ -59,6 +63,7 @@ func (s *UploadStep) Process(ctx context.Context, listings []models.Listing) ([]
 	}
 
 	utils.Log("Database Contains %d Listings", len(dbListings))
+	utils.Custom("Database Contains %d Listings", len(dbListings))
 
 	return dbListings, nil
 }

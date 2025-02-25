@@ -202,7 +202,7 @@ func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
 		}
 
 	} else {
-		utils.Error("No response received.")
+		utils.Error("No response received from Chat.")
 		utils.Debug("chatRequest: %v", chatRequest)
 	}
 

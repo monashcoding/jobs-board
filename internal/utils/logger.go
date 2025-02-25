@@ -10,11 +10,31 @@ import (
 	"time"
 )
 
-var LogHandler func(string)
+type LogEntry struct {
+	Timestamp string
+	Level     string
+	Function  string
+	Message   string
+	Color     string
+}
+
+var (
+	LogHandler func(string)
+	LogStore   []LogEntry
+)
 
 // SetLogHandler sets a function to be called with each log message
 func SetLogHandler(handler func(string)) {
 	LogHandler = handler
+}
+
+// Add these new functions
+func GetLogs() []LogEntry {
+	return LogStore
+}
+
+func ClearLogs() {
+	LogStore = []LogEntry{}
 }
 
 // Log prints a standard log message with optional formatting
@@ -43,6 +63,11 @@ func Warn(format string, args ...interface{}) {
 	logWithOptionalLevel("[!] "+message, "WARN", 2, "\033[33m") // Yellow
 }
 
+func Custom(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	logWithOptionalLevel(message, "CUSTOM", 2, "\033[35m") // Magenta
+}
+
 // Success logs a message with a [\u2713] prefix
 func Success(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
@@ -60,6 +85,8 @@ func logWithOptionalLevel(message string, level string, skip int, color string) 
 	// Get the caller's function name
 	pc, _, _, ok := runtime.Caller(skip)
 	functionName := "unknown"
+	timestamp := time.Now().Format("15:04:05") // Move timestamp declaration here
+
 	if ok {
 		fn := runtime.FuncForPC(pc)
 		if fn != nil {
@@ -68,11 +95,21 @@ func logWithOptionalLevel(message string, level string, skip int, color string) 
 			// Split by "/" and get the last two parts (package.function)
 			parts := strings.Split(fullName, "/")
 			functionName = parts[len(parts)-1]
+
+			// Store the log entry
+			if level == "FATAL" || level == "ERROR" || level == "CUSTOM" {
+				logEntry := LogEntry{
+					Timestamp: timestamp,
+					Level:     level,
+					Function:  functionName,
+					Message:   message,
+					Color:     color,
+				}
+				LogStore = append(LogStore, logEntry)
+			}
 		}
 	}
 
-	// Format timestamp
-	timestamp := time.Now().Format("15:04:05")
 	resetColor := "\033[0m"
 
 	var logMessage string
