@@ -46,16 +46,16 @@ func GetConfig() *Configuration {
 		RunUpload:          true, // Run Upload Step?
 
 		// Grad Connection Settings
-		GradConnectionScrapeAll: false, // Scrape all pages on GradConnect?
-		GradConnectionPageSize:  25,    // Number of listings per page
-		GradConnectionMaxPages:  2,     // Maximum number of pages to scrape. Ignore if GradConnectionScrapeAll is true
+		GradConnectionScrapeAll: true, // Scrape all pages on GradConnect?
+		GradConnectionPageSize:  25,   // Number of listings per page
+		GradConnectionMaxPages:  2,    // Maximum number of pages to scrape. Ignore if GradConnectionScrapeAll is true
 
 		// Prosple Settings
-		ProspleScrapeAll: false, // Scrape all pages on Prosple?
-		ProsplePageSize:  50,    // Number of listings per page
-		ProspleMaxPages:  2,     // Maximum number of pages to scrape. Ignore if ProspleScrapeAll is true
+		ProspleScrapeAll: true, // Scrape all pages on Prosple?
+		ProsplePageSize:  50,   // Number of listings per page
+		ProspleMaxPages:  2,    // Maximum number of pages to scrape. Ignore if ProspleScrapeAll is true
 
 		// LinkedIn Settings
-		LinkedInMaxListings: 5, // Maximum number of listings to scrape on LinkedIn
+		LinkedInMaxListings: 100, // Maximum number of listings to scrape on LinkedIn
 	}
 }
