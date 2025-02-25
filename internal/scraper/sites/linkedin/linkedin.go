@@ -97,6 +97,7 @@ func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
 			"keywords": `(graduate OR junior OR intern) (
                 "software engineer" OR 
                 "software developer" OR 
+				"carsales" OR
                 "data engineer" OR 
                 "data scientist" OR 
                 "machine learning" OR 

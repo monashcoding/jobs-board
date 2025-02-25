@@ -46,19 +46,19 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 				errCh <- err
 			}
 
-			// Get industry field
-			updatedListing, err = GetIndustryFieldandType(updatedListing)
-			if err != nil {
-				utils.Warn("Failed to get industry field: %v", err)
-				errCh <- err
-			}
+			// // Get industry field
+			// updatedListing, err = GetIndustryFieldandType(updatedListing)
+			// if err != nil {
+			// 	utils.Warn("Failed to get industry field: %v", err)
+			// 	errCh <- err
+			// }
 
-			// Generate one liner description
-			updatedListing, err = GenerateOneLinerDesc(updatedListing)
-			if err != nil {
-				utils.Warn("Failed to generate one liner description: %v", err)
-				errCh <- err
-			}
+			// // Generate one liner description
+			// updatedListing, err = GenerateOneLinerDesc(updatedListing)
+			// if err != nil {
+			// 	utils.Warn("Failed to generate one liner description: %v", err)
+			// 	errCh <- err
+			// }
 
 			// Store the processed listing in the correct index
 			parsedListings[i] = updatedListing
@@ -98,45 +98,40 @@ type ChatResponse struct {
 }
 
 func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
-	// Skip descriptions with HTML tags already
-	if !strings.HasPrefix(*listing.Description, "<") || !strings.HasPrefix(*listing.Description, "\u003c") {
-		// Set endpoint and API key
-		endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
-		apiKey := os.Getenv("AZ_API_KEY")
+	// Set endpoint and API key
+	endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
+	apiKey := os.Getenv("AZ_API_KEY")
 
-		// Construct the request body
-		chatRequest := ChatRequest{
-			Messages: []struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			}{
-				{Role: "system", Content: "You are a helpful assistant."},
-				{Role: "user", Content: "Fix the description by adding appropriate HTML tags, for headings use <h3>. Only return the modified description as plain text without any additional words or explanation: " + *listing.Description},
-			},
-		}
+	// Construct the request body
+	chatRequest := ChatRequest{
+		Messages: []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}{
+			{Role: "system", Content: "You are a helpful assistant."},
+			{Role: "user", Content: "Fix the description by adding appropriate HTML tags, for headings use <h3>. Please remove any weird symbols like \\xa0 and \\u202f. Only return the modified description as plain text without any additional words or explanation: " + *listing.Description},
+		},
+	}
 
-		// Make the request
-		chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
-		if err != nil {
-			return listing, err
-		}
+	// Make the request
+	chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
+	if err != nil {
+		return listing, err
+	}
 
-		// Output the assistant's response
-		if len(chatResponse.Choices) > 0 {
-			desc := strings.TrimPrefix(chatResponse.Choices[0].Message.Content, "```html")
-			desc = strings.TrimSuffix(desc, "```")
-			desc = strings.TrimSpace(desc)
-			*listing.Description = desc
-		} else {
-			utils.Error("No response received.")
-			utils.Debug("chatRequest: %v", chatRequest)
-		}
+	// Output the assistant's response
+	if len(chatResponse.Choices) > 0 {
+		desc := strings.TrimPrefix(chatResponse.Choices[0].Message.Content, "```html")
+		desc = strings.TrimSuffix(desc, "```")
+		desc = strings.TrimSpace(desc)
+		*listing.Description = desc
 	} else {
-		utils.Debug("Description already has HTML tags.")
+		utils.Error("No response received.")
+		utils.Debug("chatRequest: %v", chatRequest)
 	}
 	// Replace all breaks
-	*listing.Description = strings.ReplaceAll(*listing.Description, "\n", "")
-	*listing.Description = strings.ReplaceAll(*listing.Description, "<br/>", "")
+	*listing.Description = strings.ReplaceAll(*listing.Description, "\\n", "")
+	// *listing.Description = strings.ReplaceAll(*listing.Description, "<br/>", "")
 
 	return listing, nil
 }

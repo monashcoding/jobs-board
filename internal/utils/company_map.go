@@ -64,4 +64,18 @@ var companyMap = []struct {
 			"Sportsbet Australia",
 		},
 	},
+	{
+		Name: "Macquarie Group",
+		Matches: []string{
+			"Macquarie Group",
+			"Macquarie Technology Group",
+		},
+	},
+	{
+		Name: "IMC Trading",
+		Matches: []string{
+			"IMC Trading",
+			"IMC Trading Australia",
+		},
+	},
 }

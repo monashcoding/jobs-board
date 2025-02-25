@@ -3,6 +3,7 @@ package gradcon
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
@@ -39,7 +40,11 @@ func (s *GradconScraper) MergeDetailedDescriptionsWithListings(listings []models
 
 			if companyListing.Slug == match {
 				mergeCount++
-				listings[i].Description = &companyListing.Content
+				trimmedContent := strings.TrimPrefix(companyListing.Content, "{'body': '")
+				trimmedContent = strings.TrimPrefix(trimmedContent, "{'body': \"")
+				trimmedContent = strings.TrimSuffix(trimmedContent, "'}")
+				trimmedContent = strings.TrimSuffix(trimmedContent, "\"}")
+				listings[i].Description = &trimmedContent
 			}
 		}
 	}
