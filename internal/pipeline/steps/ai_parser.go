@@ -46,19 +46,19 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 				errCh <- err
 			}
 
-			// // Get industry field
-			// updatedListing, err = GetIndustryFieldandType(updatedListing)
-			// if err != nil {
-			// 	utils.Warn("Failed to get industry field: %v", err)
-			// 	errCh <- err
-			// }
+			// Get industry field
+			updatedListing, err = GetIndustryFieldandType(updatedListing)
+			if err != nil {
+				utils.Warn("Failed to get industry field: %v", err)
+				errCh <- err
+			}
 
-			// // Generate one liner description
-			// updatedListing, err = GenerateOneLinerDesc(updatedListing)
-			// if err != nil {
-			// 	utils.Warn("Failed to generate one liner description: %v", err)
-			// 	errCh <- err
-			// }
+			// Generate one liner description
+			updatedListing, err = GenerateOneLinerDesc(updatedListing)
+			if err != nil {
+				utils.Warn("Failed to generate one liner description: %v", err)
+				errCh <- err
+			}
 
 			// Store the processed listing in the correct index
 			parsedListings[i] = updatedListing
