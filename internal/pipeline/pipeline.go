@@ -3,7 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
-
+	"strings"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
@@ -39,12 +39,17 @@ func (p *Pipeline) Run(ctx context.Context, listings []models.Listing) ([]models
 		utils.Log("%s", "Finished step: "+step.Name())
 	}
 	logs := utils.GetLogs()
+	var discordMessage strings.Builder
+    discordMessage.WriteString("**Scraper Run Report**\n```\n")
 	for _, entry := range logs {
-		fmt.Printf("Time: %s, Level: %s, Message: %s\n",
-			entry.Timestamp,
-			entry.Level,
-			entry.Message)
-	}
+		logLine := fmt.Sprintf("[%s] %s: %s\n", 
+            entry.Timestamp, 
+            entry.Function,
+            strings.TrimSpace(entry.Message))
+        discordMessage.WriteString(logLine)
+    }
+	
+	utils.SendToDiscord(discordMessage.String())
 
 	// Clear logs if needed
 	utils.ClearLogs()
