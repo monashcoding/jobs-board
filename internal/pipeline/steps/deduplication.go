@@ -70,7 +70,7 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 			dict2[hash] = listing
 		} else {
 			existingModel.SourceURLs = append(existingModel.SourceURLs, listing.SourceURLs...)
-			utils.Log("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
+			utils.Log("App url Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
 		}
 	}
 
@@ -79,9 +79,23 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 		uniqueListings2 = append(uniqueListings2, listing)
 	}
 
-	// process and insert listings. objects with existing IDs will be overwritten
-	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings))
-	utils.Custom("Deduplication: %d -> %d listings", len(listings), len(uniqueListings))
+	// Loop through uniqueListings2 and if the source of the listing is not the same as the source override map, remove it
+	sourceOverrideMap := utils.GetSourceOverrideMap()
+	var uniqueListings3 []models.Listing
+	for _, listing := range uniqueListings2 {
+		if sourceOverrideMap[listing.Company.Name] == listing.Source {
+			uniqueListings3 = append(uniqueListings3, listing)
+			// else if company name is not in sourceOverrideMap, add it to uniqueListings3
+		} else if _, ok := sourceOverrideMap[listing.Company.Name]; !ok {
+			uniqueListings3 = append(uniqueListings3, listing)
+		} else {
+			utils.Log("Deduplication: Source override map mismatch: %s | %s", listing.Company.Name, listing.Title)
+		}
+	}
 
-	return uniqueListings2, nil
+	// process and insert listings. objects with existing IDs will be overwritten
+	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings3))
+	utils.Custom("Deduplication: %d -> %d listings", len(listings), len(uniqueListings3))
+
+	return uniqueListings3, nil
 }

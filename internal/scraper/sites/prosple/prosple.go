@@ -73,12 +73,12 @@ func (s *ProspleScraper) SetScrapeAll(scrapeAll bool) {
 	s.scrapeAll = scrapeAll
 }
 
-func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int) ([]models.Listing, error) {
+func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int, field string) ([]models.Listing, error) {
 	prospleApiUrl := s.API_URL()
 	var listings []models.Listing
 
 	query := GetGraphQlQuery()
-	variables := GetGraphQlVariables(offset, pageSize)
+	variables := GetGraphQlVariables(offset, pageSize, field)
 
 	response, err := SendGraphQLQuery(prospleApiUrl, query, variables, s.unblocker)
 
@@ -100,42 +100,48 @@ func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int) ([]model
 
 func (s *ProspleScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
 	var listings []models.Listing
+	// Fields to scrape
+	fields := []string{"502", "532", "677"}
 
 	// Scrape all listings
 	if s.scrapeAll {
 		// Scrape until pages are exhausted (i.e. the size of the returned array is not the same as the page size)
-		for i := 0; ; i++ {
-			utils.Log("Fully Scraping Prosple: Page %d", i+1)
+		for _, field := range fields {
+			for i := 0; ; i++ {
+				utils.Log("Fully Scraping Prosple: Field %s, Page %d", field, i+1)
 
-			newListings, err := s.PerformGraphQLScrape(i*s.pageSize, s.pageSize)
+				newListings, err := s.PerformGraphQLScrape(i*s.pageSize, s.pageSize, field)
 
-			if err != nil {
-				return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
-			}
+				if err != nil {
+					return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
+				}
 
-			if len(newListings) != s.pageSize {
-				// End of results
+				if len(newListings) != s.pageSize {
+					// End of results
+					listings = append(listings, newListings...)
+					break
+				}
+
 				listings = append(listings, newListings...)
-				break
 			}
-
-			listings = append(listings, newListings...)
 		}
 
 		return listings, nil
 	}
 
 	// Scrape a fixed number of pages
-	for i := 0; i < s.maxPages; i++ {
-		utils.Log("Scraping Prosple: Page %d of %d...", i+1, s.maxPages)
+	for _, field := range fields {
+		for i := 0; i < s.maxPages; i++ {
+			utils.Log("Scraping Prosple: Field %s, Page %d of %d...", field, i+1, s.maxPages)
 
-		newListings, err := s.PerformGraphQLScrape(i*s.pageSize, s.pageSize)
+			newListings, err := s.PerformGraphQLScrape(i*s.pageSize, s.pageSize, field)
 
-		if err != nil {
-			return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
+			if err != nil {
+				return nil, fmt.Errorf("failed to scrape Prosple: %v", err)
+			}
+
+			listings = append(listings, newListings...)
 		}
-
-		listings = append(listings, newListings...)
 	}
 
 	return listings, nil

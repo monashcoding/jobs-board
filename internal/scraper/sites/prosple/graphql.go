@@ -130,7 +130,7 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 	return &graphqlResp, nil
 }
 
-func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
+func GetGraphQlVariables(offset int, limit int, field string) map[string]interface{} {
 	return map[string]interface{}{
 		"parameters": map[string]interface{}{
 			"gid": "6",
@@ -159,7 +159,7 @@ func GetGraphQlVariables(offset int, limit int) map[string]interface{} {
 			},
 			"selectedStudyFieldFacets": []map[string]interface{}{
 				{
-					"id": "502", // 502 = IT & Computer Science
+					"id": field, // 502 = IT & Computer Science, 532 is Eng, 677 is math or smt
 				},
 			},
 			"selectedWorkRightsType": []map[string]interface{}{
