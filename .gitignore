@@ -33,3 +33,5 @@ go.work.sum
 debug
 repoisitory
 /repository/
+
+config.go
