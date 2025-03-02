@@ -44,7 +44,7 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 		} else {
 			existingModel.SourceURLs = append(existingModel.SourceURLs, listing.SourceURLs...)
 			utils.Log("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
-			utils.Custom("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
+			//utils.Custom("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
 		}
 	}
 

@@ -6,7 +6,7 @@ type Configuration struct {
 	RunGradConnection bool
 	RunProsple        bool
 	RunLinkedIn       bool
-	RunJaneStreet     bool
+	RunCustom         bool
 
 	RunWriteJson       bool
 	RunNormalisation   bool
@@ -32,10 +32,10 @@ func GetConfig() *Configuration {
 		Version: "v1.0.0 beta",
 
 		// Scrapers
-		RunGradConnection: true, // Scrape GradConnection?
-		RunProsple:        true, // Scrape Prosple?
-		RunLinkedIn:       true, // Scrape LinkedIn?
-		RunJaneStreet:     true, // Scrape JaneStreet?
+		RunGradConnection: false, // Scrape GradConnection?
+		RunProsple:        false, // Scrape Prosple?
+		RunLinkedIn:       false, // Scrape LinkedIn?
+		RunCustom:         true,  // Scrape all custom scrapers? (e.g. Jane Street)
 
 		// Pipeline
 		RunWriteJson:       true, // Run Write JSON Step?

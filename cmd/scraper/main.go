@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/atlassian"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/janestreet"
 	"os"
 	"os/signal"
@@ -121,16 +122,13 @@ func RunScraper() {
 	var scrapers []scraper.Scraper
 	if config.RunGradConnection {
 		gradconScraper := gradcon.NewGradconScraper()
-		// Set GradConnection specific settings
 		gradconScraper.SetPageSize(config.GradConnectionPageSize)
 		gradconScraper.SetMaxPages(config.GradConnectionMaxPages)
 		gradconScraper.SetScrapeAll(config.GradConnectionScrapeAll)
-
 		scrapers = append(scrapers, gradconScraper)
 	}
 	if config.RunProsple {
 		prospleScraper := prosple.NewProspleScraper()
-		// Set Prosple specific settings
 		prospleScraper.SetPageSize(config.ProsplePageSize)
 		prospleScraper.SetMaxPages(config.ProspleMaxPages)
 		prospleScraper.SetScrapeAll(config.ProspleScrapeAll)
@@ -138,19 +136,20 @@ func RunScraper() {
 	}
 	if config.RunLinkedIn {
 		linkedinScraper := linkedin.NewLinkedInScraper()
-		// Set LinkedIn specific settings
 		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
 		scrapers = append(scrapers, linkedinScraper)
 	}
 	if config.RunLinkedIn {
 		linkedinScraper := linkedin.NewLinkedInScraper()
-		// Set LinkedIn specific settings
 		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
 		scrapers = append(scrapers, linkedinScraper)
 	}
-	if config.RunJaneStreet {
+	if config.RunCustom {
 		janeStreetScraper := janestreet.NewJaneStreetScraper()
 		scrapers = append(scrapers, janeStreetScraper)
+
+		atlassianScraper := atlassian.NewAtlassianScraper()
+		scrapers = append(scrapers, atlassianScraper)
 	}
 
 	mvpUpload := steps.NewMVPUploadStep(mongodb, config.Version)

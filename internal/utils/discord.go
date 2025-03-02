@@ -20,7 +20,7 @@ func SendToDiscord(message string) error {
 	}
 
 	// Get webhook URL from environment variable
-	webhookURL := os.Getenv("WEBHOOK_URL")
+	webhookURL := os.Getenv("DISCORD_WEBHOOK_URL")
 	if webhookURL == "" {
 		log.Fatal("DISCORD_WEBHOOK_URL is not set in .env file")
 	}

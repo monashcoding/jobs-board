@@ -23,11 +23,6 @@ var (
 	LogStore   []LogEntry
 )
 
-
-var (
-	LogHandler func(string)
-	LogStore []LogEntry
-)
 // SetLogHandler sets a function to be called with each log message
 func SetLogHandler(handler func(string)) {
 	LogHandler = handler
@@ -36,7 +31,7 @@ func SetLogHandler(handler func(string)) {
 // Add these new functions
 func GetLogs() []LogEntry {
 
-    return LogStore
+	return LogStore
 }
 
 func ClearLogs() {
@@ -118,33 +113,29 @@ func logWithOptionalLevel(message string, level string, skip int, color string) 
 
 	resetColor := "\033[0m"
 
-  // Store the log entry
-  if level == "FATAL" || level == "ERROR" || level == "CUSTOM" {
-      logEntry := LogEntry{
-          Timestamp: timestamp,
-          Level:     level,
-          Function:  functionName,
-          Message:   message,
-          Color:     color,
-      }
-      LogStore = append(LogStore, logEntry)
-  }
-}
-}
+	// Store the log entry
+	if level == "FATAL" || level == "ERROR" || level == "CUSTOM" {
+		logEntry := LogEntry{
+			Timestamp: timestamp,
+			Level:     level,
+			Function:  functionName,
+			Message:   message,
+			Color:     color,
+		}
+		LogStore = append(LogStore, logEntry)
+	}
 
-    resetColor := "\033[0m"
+	var logMessage string
+	if level != "" {
+		logMessage = fmt.Sprintf("%s[%s] [%s %s] [%s] %s\n", color, level, functionName, timestamp, message, resetColor)
+	} else {
+		logMessage = fmt.Sprintf("%s[%s %s] %s%s\n", color, functionName, timestamp, message, resetColor)
+	}
 
-    var logMessage string
-    if level != "" {
-        logMessage = fmt.Sprintf("%s[%s] [%s %s] [%s] %s\n", color, level, functionName, timestamp, message, resetColor)
-    } else {
-        logMessage = fmt.Sprintf("%s[%s %s] %s%s\n", color, functionName, timestamp, message, resetColor)
-    }
+	fmt.Print(logMessage)
 
-    fmt.Print(logMessage)
-
-    // Call the log handler if set
-    if LogHandler != nil {
-        LogHandler(logMessage)
-    }
+	// Call the log handler if set
+	if LogHandler != nil {
+		LogHandler(logMessage)
+	}
 }
