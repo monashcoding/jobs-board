@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
@@ -46,12 +47,16 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 				errCh <- err
 			}
 
+			time.Sleep(2 * time.Minute)
+
 			// Get industry field
 			updatedListing, err = GetIndustryFieldandType(updatedListing)
 			if err != nil {
 				utils.Warn("Failed to get industry field: %v", err)
 				errCh <- err
 			}
+
+			time.Sleep(2 * time.Minute)
 
 			// Generate one liner description
 			updatedListing, err = GenerateOneLinerDesc(updatedListing)
@@ -127,7 +132,7 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 		*listing.Description = desc
 	} else {
 		utils.Error("No response received.")
-		utils.Debug("chatRequest: %v", chatRequest)
+		// utils.Debug("chatRequest: %v", chatRequest)
 	}
 	// Replace all breaks
 	*listing.Description = strings.ReplaceAll(*listing.Description, "\\n", "")
@@ -198,7 +203,7 @@ func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
 
 	} else {
 		utils.Error("No response received from Chat.")
-		utils.Debug("chatRequest: %v", chatRequest)
+		// utils.Debug("chatRequest: %v", chatRequest)
 	}
 
 	return listing, nil
@@ -246,6 +251,7 @@ func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (C
 	}
 
 	if len(chatResponse.Choices) == 0 {
+		utils.Error("No response received from Chat.")
 		utils.Debug("Response body: %s", body)
 	}
 
@@ -284,7 +290,7 @@ func GenerateOneLinerDesc(listing models.Listing) (models.Listing, error) {
 			listing.OneLinerDesc = &oneLinerDescStr
 		} else {
 			utils.Error("No response received.")
-			utils.Debug("chatRequest: %v", chatRequest)
+			// utils.Debug("chatRequest: %v", chatRequest)
 		}
 	} else {
 		utils.Debug("One liner description already exists.")
