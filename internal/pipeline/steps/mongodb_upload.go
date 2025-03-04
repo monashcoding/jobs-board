@@ -18,21 +18,21 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type MVPUploadStep struct {
+type MongoDBUploadStep struct {
 	mongodb *database.MongoDB
 	version string
 	logs    []string
 }
 
-func NewMVPUploadStep(mongodb *database.MongoDB, version string) *MVPUploadStep {
-	return &MVPUploadStep{
+func NewMongoDBUploadStep(mongodb *database.MongoDB, version string) *MongoDBUploadStep {
+	return &MongoDBUploadStep{
 		mongodb: mongodb,
 		logs:    make([]string, 0),
 		version: version,
 	}
 }
 
-func (s *MVPUploadStep) Name() string {
+func (s *MongoDBUploadStep) Name() string {
 	return "MVPUpload"
 }
 
@@ -43,7 +43,7 @@ func stripAnsiCodes(str string) string {
 }
 
 // AddLog allows other parts of the application to add logs
-func (s *MVPUploadStep) AddLog(log string) {
+func (s *MongoDBUploadStep) AddLog(log string) {
 	// Clean the log before storing
 	cleanLog := stripAnsiCodes(log)
 	s.logs = append(s.logs, cleanLog)
@@ -83,7 +83,7 @@ func generateListingFingerprint(listing models.Listing) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
-func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
 	if len(listings) == 0 {
 		return listings, nil
 	}
@@ -182,36 +182,6 @@ func (s *MVPUploadStep) Process(ctx context.Context, listings []models.Listing) 
 			return nil, fmt.Errorf("failed to update active jobs batch: %w", err)
 		}
 	}
-
-	// // Create new collection for this run
-	// collection := s.mongodb.GetDatabase().Collection(collectionName)
-
-	// // Create documents array
-	// docs := make([]interface{}, len(listings))
-	// for i, listing := range listings {
-	// 	docs[i] = listing
-	// }
-
-	// // Insert all listings
-	// _, err := collection.InsertMany(ctx, docs)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to insert listings: %w", err)
-	// }
-
-	// // Create a metadata document containing logs and timestamp
-	// metadataCollection := s.mongodb.GetDatabase().Collection(fmt.Sprintf("metadata_%s", timestamp))
-	// metadata := map[string]interface{}{
-	// 	"timestamp":      time.Now(),
-	// 	"logs":           s.logs,
-	// 	"total_listings": len(listings),
-	// 	"run_date":       time.Now().Format("2006-01-02"),
-	// 	"run_time":       time.Now().Format("15:04:05"),
-	// }
-
-	// _, err = metadataCollection.InsertOne(ctx, metadata)
-	// if err != nil {
-	// 	utils.Error("Failed to insert metadata: %v", err)
-	// }
 
 	// Get listings that are marked as outdated
 	// Set them as false if their days_lived is less than 7 and increment their days_lived by 1

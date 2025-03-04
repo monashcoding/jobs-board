@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
-	"strings"
 )
 
 // Step represents a single processing step in the pipeline
@@ -31,27 +30,30 @@ func (p *Pipeline) Run(ctx context.Context, listings []models.Listing) ([]models
 	currentListings := listings
 
 	for _, step := range p.steps {
-		utils.Log("%s", "Running step: "+step.Name())
+		utils.Log("Running step: %s", step.Name())
 		currentListings, err = step.Process(ctx, currentListings)
 		if err != nil {
 			return nil, fmt.Errorf("error in %s step: %w", step.Name(), err)
 		}
-		utils.Log("%s", "Finished step: "+step.Name())
+		utils.Log("Finished step: %s", step.Name())
 	}
+
 	logs := utils.GetLogs()
 
-	var discordMessage strings.Builder
-	discordMessage.WriteString("**Scraper Run Report**\n```\n")
+	// Only include important logs (logs marked as ERROR, CUSTOM, or FATAL)
+	var importantLogs []utils.LogEntry
 	for _, entry := range logs {
-		logLine := fmt.Sprintf("[%s] %s: %s\n",
-			entry.Timestamp,
-			entry.Function,
-			strings.TrimSpace(entry.Message))
-		discordMessage.WriteString(logLine)
+		if entry.Level == "ERROR" || entry.Level == "CUSTOM" || entry.Level == "FATAL" {
+			importantLogs = append(importantLogs, entry)
+		}
 	}
-	discordMessage.WriteString("\n```")
 
-	utils.SendToDiscord(discordMessage.String())
+	// Send logs as embeds
+	if len(importantLogs) > 0 {
+		if err := utils.SendScraperLogsEmbed(importantLogs); err != nil {
+			utils.Warn("Failed to send logs to Discord: %v", err)
+		}
+	}
 
 	// Clear logs if needed
 	utils.ClearLogs()

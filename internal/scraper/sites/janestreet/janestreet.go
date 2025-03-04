@@ -16,7 +16,7 @@ import (
 
 type JaneStreetScraper struct {
 	unblocker unblocker.Service
-	baseURL   string
+	jobLimit  int
 }
 
 type Job struct {
@@ -57,7 +57,6 @@ func NewJaneStreetScraper() *JaneStreetScraper {
 
 	return &JaneStreetScraper{
 		unblocker: unblockerService,
-		baseURL:   "https://www.janestreet.com",
 	}
 }
 
@@ -66,7 +65,11 @@ func (s *JaneStreetScraper) Name() string {
 }
 
 func (s *JaneStreetScraper) URL() string {
-	return s.baseURL
+	return "https://www.janestreet.com"
+}
+
+func (s *JaneStreetScraper) SetJobLimit(limit int) {
+	s.jobLimit = limit
 }
 
 func (s *JaneStreetScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
@@ -88,12 +91,16 @@ func (s *JaneStreetScraper) Scrape(ctx context.Context) ([]models.Listing, error
 		}
 	}
 
+	if s.jobLimit > 0 && (len(listings) > s.jobLimit) {
+		listings = listings[:s.jobLimit]
+	}
+
 	utils.Success("Found %d relevant Jane Street listings", len(listings))
 	return listings, nil
 }
 
 func (s *JaneStreetScraper) fetchJobs(ctx context.Context) ([]Job, error) {
-	jobsURL := s.baseURL + "/jobs/main.json"
+	jobsURL := s.URL() + "/jobs/main.json"
 
 	req, err := http.NewRequest("GET", jobsURL, nil)
 	if err != nil {
@@ -129,10 +136,10 @@ func (s *JaneStreetScraper) convertToListing(job Job) (models.Listing, error) {
 	}
 
 	// Generate application URL
-	applicationURL := fmt.Sprintf("%s/join-jane-street/position/%d/", s.baseURL, job.ID)
+	applicationURL := fmt.Sprintf("%s/join-jane-street/position/%d/", s.URL(), job.ID)
 
 	// Set company details
-	companyWebsite := s.baseURL
+	companyWebsite := s.URL()
 	logo := "https://www.janestreet.com/assets/logo_horizontal-177b793d3559af186aa24ab7a93bea2c04d723f02e2ea905263735abe031f15b.png"
 
 	listing := models.Listing{
@@ -154,7 +161,7 @@ func (s *JaneStreetScraper) convertToListing(job Job) (models.Listing, error) {
 		Type:          &jobType,
 		Locations:     []models.LocationType{models.OTHERS},
 		StudyFields:   []string{"IT & Computer Science", "Engineering & Mathematics"},
-		Source:        models.MULTIPLE,
+		Source:        models.JANESTREET,
 		IndustryField: models.QUANT_TRADING,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),

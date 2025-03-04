@@ -15,9 +15,8 @@ import (
 )
 
 type LinkedInScraper struct {
-	unblocker   unblocker.Service
-	baseURL     string
-	maxListings int
+	unblocker unblocker.Service
+	jobLimit  int
 }
 
 func NewLinkedInScraper() *LinkedInScraper {
@@ -47,7 +46,6 @@ func NewLinkedInScraper() *LinkedInScraper {
 
 	return &LinkedInScraper{
 		unblocker: unblockerService,
-		baseURL:   "https://www.linkedin.com",
 	}
 }
 
@@ -56,23 +54,24 @@ func (s *LinkedInScraper) Name() string {
 }
 
 func (s *LinkedInScraper) URL() string {
-	return s.baseURL
+	return "https://www.linkedin.com"
 }
 
-func (s *LinkedInScraper) SetMaxListings(maxListings int) {
-	s.maxListings = maxListings
+func (s *LinkedInScraper) SetJobLimit(limit int) {
+	s.jobLimit = limit
 }
 
 func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
-	listings := []models.Listing{}
+	var listings []models.Listing
 
 	jobs, err := s.getAllJobs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all jobs: %w", err)
 	}
 
-	utils.Log("Found %d jobs in search results. Starting to parse individual jobs. \n", len(jobs))
+	utils.Log("Found %d jobs in search results. Starting to parse individual jobs.", len(jobs))
 
+	// Process jobs with job limit in mind
 	for i, job := range jobs {
 		utils.Log("Processing job %d/%d with ID %s", i+1, len(jobs), job.ID)
 		listing, err := s.processJob(ctx, job)
@@ -81,6 +80,18 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 			continue
 		}
 		listings = append(listings, listing)
+
+		// Check if we've reached the job limit
+		if s.jobLimit > 0 && len(listings) >= s.jobLimit {
+			utils.Log("Reached job limit (%d), stopping job processing", s.jobLimit)
+			break
+		}
+	}
+
+	// Trim the list to match our target exactly if needed
+	if s.jobLimit > 0 && len(listings) > s.jobLimit {
+		listings = listings[:s.jobLimit]
+		utils.Log("Trimmed listings to match job limit exactly (%d)", s.jobLimit)
 	}
 
 	return listings, nil
@@ -117,7 +128,7 @@ func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
 			"start":    fmt.Sprintf("%d", start),
 		}
 
-		searchURL := buildSearchURL(s.baseURL, searchParams)
+		searchURL := buildSearchURL(s.URL(), searchParams)
 
 		req, err := http.NewRequest("GET", searchURL, nil)
 		if err != nil {
@@ -142,18 +153,21 @@ func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {
 
 		// No more results
 		if len(jobs) == 0 {
+			utils.Log("No more job results found")
 			break
 		}
 
 		allJobs = append(allJobs, jobs...)
 
 		// Check if we've hit our maximum
-		if s.maxListings > 0 && len(allJobs) >= s.maxListings {
-			allJobs = allJobs[:s.maxListings]
+		if s.jobLimit > 0 && len(allJobs) >= s.jobLimit {
+			utils.Log("Reached job limit (%d), stopping search", s.jobLimit)
+			if len(allJobs) > s.jobLimit {
+				allJobs = allJobs[:s.jobLimit]
+			}
 			break
 		}
 
-		// Prepare for next page
 		start += len(jobs)
 	}
 

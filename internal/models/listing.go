@@ -77,6 +77,8 @@ const (
 	GRADCONNECTION Source = "GRADCONNECTION"
 	PROSPLE        Source = "PROSPLE"
 	LINKEDIN       Source = "LINKEDIN"
+	ATLASSIAN      Source = "ATLASSIAN"
+	JANESTREET     Source = "JANESTREET"
 	MULTIPLE       Source = "MULTIPLE"
 )
 

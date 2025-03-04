@@ -2,98 +2,43 @@ package main
 
 import (
 	"context"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/atlassian"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/janestreet"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	config "github.com/monashcoding/mploy-golang-core"
+	"github.com/monashcoding/mploy-golang-core/internal/config"
+	"github.com/monashcoding/mploy-golang-core/internal/database"
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
+	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/atlassian"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/janestreet"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/linkedin"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/prosple"
-
-	"github.com/joho/godotenv"
-	"github.com/monashcoding/mploy-golang-core/internal/models"
-	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
-
-	"github.com/monashcoding/mploy-golang-core/internal/database"
-	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
-	"github.com/monashcoding/mploy-golang-core/internal/scraper"
 )
 
 func main() {
-	// Load environment variables
-	if err := godotenv.Load(); err != nil {
-		utils.Fatal(".env file not found: %v\n", err)
-	}
-	utils.Success("Environment variables loaded.")
-
-	// Scraper Wrapper
-	if os.Getenv("ENVIRONMENT") == "DEVELOPMENT" {
-		RunScraper()
-		return
+	// Validate environment variables
+	missing := config.ValidateEnvironment()
+	if len(missing) > 0 {
+		utils.Fatal("Missing required environment variables: %s", strings.Join(missing, ", "))
 	}
 
-	if os.Getenv("ENVIRONMENT") == "PRODUCTION" {
-		ScheduleScraper()
-		return
-	}
-
-	utils.Fatal("Invalid environment. Please set ENVIRONMENT to either DEVELOPMENT or PRODUCTION in .env file.")
-}
-
-func ScheduleScraper() {
-	now := time.Now().UTC()
-
-	// Calculate next run time (xx:05 of the next hour)
-	scheduledMinute := 5
-	scheduledHour := now.Hour()
-	scheduledDay := now.Day()
-
-	// If we're past the 5th minute of this hour, schedule for next hour
-	if now.Minute() >= scheduledMinute {
-		scheduledHour++
-		// If we're scheduling past midnight
-		if scheduledHour >= 24 {
-			scheduledHour = 0
-			scheduledDay++
-		}
-	}
-
-	nextRun := time.Date(
-		now.Year(),      // year
-		now.Month(),     // month
-		scheduledDay,    // day
-		scheduledHour,   // hour
-		scheduledMinute, // minute
-		0,               // second
-		0,               // nanosecond
-		time.UTC,        // location
-	)
-
-	utils.Log("Next run at %s UTC", nextRun.Format("2006-01-02 15:04:05 MST"))
-
-	duration := nextRun.Sub(now)
-
-	// Create ticker for hourly runs
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-
-	// First run after initial delay
-	time.Sleep(duration)
+	utils.Success("Environment variables loaded and validated.")
 	RunScraper()
-
-	// Subsequent runs
-	for range ticker.C {
-		utils.Log("Starting scheduled scraper run at %s UTC", time.Now().UTC().Format("2006-01-02 15:04:05 MST"))
-		RunScraper()
-	}
 }
 
 func RunScraper() {
+	startTime := time.Now()
+	if err := utils.SendScraperStartEmbed(); err != nil {
+		utils.Warn("Failed to send start notification to Discord: %v", err)
+	}
+
 	// Set up context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -115,94 +60,103 @@ func RunScraper() {
 		cancel()
 	}()
 
-	// Load Config
-	config := config.GetConfig()
-
-	// Initialize scrapers
-	var scrapers []scraper.Scraper
-	if config.RunGradConnection {
-		gradconScraper := gradcon.NewGradconScraper()
-		gradconScraper.SetPageSize(config.GradConnectionPageSize)
-		gradconScraper.SetMaxPages(config.GradConnectionMaxPages)
-		gradconScraper.SetScrapeAll(config.GradConnectionScrapeAll)
-		scrapers = append(scrapers, gradconScraper)
-	}
-	if config.RunProsple {
-		prospleScraper := prosple.NewProspleScraper()
-		prospleScraper.SetPageSize(config.ProsplePageSize)
-		prospleScraper.SetMaxPages(config.ProspleMaxPages)
-		prospleScraper.SetScrapeAll(config.ProspleScrapeAll)
-		scrapers = append(scrapers, prospleScraper)
-	}
-	if config.RunLinkedIn {
-		linkedinScraper := linkedin.NewLinkedInScraper()
-		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
-		scrapers = append(scrapers, linkedinScraper)
-	}
-	if config.RunLinkedIn {
-		linkedinScraper := linkedin.NewLinkedInScraper()
-		linkedinScraper.SetMaxListings(config.LinkedInMaxListings)
-		scrapers = append(scrapers, linkedinScraper)
-	}
-	if config.RunCustom {
-		janeStreetScraper := janestreet.NewJaneStreetScraper()
-		scrapers = append(scrapers, janeStreetScraper)
-
-		atlassianScraper := atlassian.NewAtlassianScraper()
-		scrapers = append(scrapers, atlassianScraper)
-	}
-
-	mvpUpload := steps.NewMVPUploadStep(mongodb, config.Version)
+	// Create MVP Upload step for use in pipeline and logging
+	mvpUpload := steps.NewMongoDBUploadStep(mongodb, os.Getenv("VERSION"))
 	utils.SetLogHandler(func(log string) {
 		mvpUpload.AddLog(log)
 	})
 
-	// Initialize pipeline
-	var pipelineSteps []pipeline.Step
+	// Initialize scrapers
+	scrapers := initializeScrapers()
 
-	if config.RunWriteJson {
-		pipelineSteps = append(pipelineSteps, steps.NewWriteJSONStep())
-	}
-	if config.RunNormalisation {
-		pipelineSteps = append(pipelineSteps, steps.NewNormalisationStep())
-	}
-	if config.RunDeduplication {
-		pipelineSteps = append(pipelineSteps, steps.NewDeduplicationStep())
-	}
-	if config.RunSynchronisation {
-		pipelineSteps = append(pipelineSteps, steps.NewSynchronisationStep())
-	}
-	if config.RunAiParser {
-		pipelineSteps = append(pipelineSteps, steps.NewAiParserStep())
-	}
-	if config.RunUpload {
-		pipelineSteps = append(pipelineSteps, mvpUpload)
-	}
+	// Initialize pipeline steps
+	pipelineSteps := initializePipelineSteps(mvpUpload)
 
-	// Collect all listings from scrapers
+	// Collect all listings from active scrapers
 	var allListings []models.Listing
 
 	for _, s := range scrapers {
-		utils.Log("Running scraper %s...", s.Name())
-		listings, err := s.Scrape(ctx)
-		if err != nil {
-			utils.Error("Error in %s scraper: %v", s.Name(), err)
-			continue
+		if config.ShouldRunScraper(s.Name()) {
+			utils.Log("Running scraper %s...", s.Name())
+			listings, err := s.Scrape(ctx)
+			if err != nil {
+				utils.Error("Error in %s scraper: %v", s.Name(), err)
+				continue
+			}
+
+			utils.Success("Finished scraper %s with %d listings.", s.Name(), len(listings))
+			utils.Custom("Scraper %s returned %d listings.", s.Name(), len(listings))
+			allListings = append(allListings, listings...)
 		}
-		utils.Success("Finished scraper %s with %d listings.", s.Name(), len(listings))
-		utils.Custom("Scraper %s returned %d listings.", s.Name(), len(listings))
-		allListings = append(allListings, listings...)
 	}
 
 	utils.Success("Scraping section finished. Starting pipelines...")
 
-	// Run pipeline with scrapers
+	// Create the pipeline with active steps
 	processingPipeline := pipeline.NewPipeline(pipelineSteps)
 
+	// Run the pipeline
 	if _, err := processingPipeline.Run(ctx, allListings); err != nil {
 		utils.Error("Error processing listings: %v", err)
 	}
 
 	utils.Success("Pipelines completed.")
-	utils.Custom("Total listings processed: %d", len(allListings), "Pipelines completed.")
+	utils.Custom("Total listings processed: %d", len(allListings))
+	// Send completion notification
+	if err := utils.SendScraperCompleteEmbed(startTime, len(allListings)); err != nil {
+		utils.Warn("Failed to send completion notification to Discord: %v", err)
+	}
+}
+
+// initializeScrapers creates all available scrapers
+func initializeScrapers() []scraper.Scraper {
+	// Create all scrapers
+	allScrapers := []scraper.Scraper{
+		gradcon.NewGradconScraper(),
+		prosple.NewProspleScraper(),
+		linkedin.NewLinkedInScraper(),
+		janestreet.NewJaneStreetScraper(),
+		atlassian.NewAtlassianScraper(),
+	}
+
+	var validScrapers []scraper.Scraper
+
+	// Apply job limits where applicable
+	for _, s := range allScrapers {
+		if config.ShouldRunScraper(s.Name()) {
+			if jobLimit := config.GetScraperJobLimit(s.Name()); jobLimit > 0 {
+				utils.Log("Setting %s job limit to %d", s.Name(), jobLimit)
+				s.SetJobLimit(jobLimit)
+			}
+			validScrapers = append(validScrapers, s)
+		}
+	}
+
+	return validScrapers
+}
+
+// initializePipelineSteps creates all available pipeline steps
+func initializePipelineSteps(uploadStep *steps.MongoDBUploadStep) []pipeline.Step {
+	// Create all pipeline steps
+	allSteps := []pipeline.Step{
+		steps.NewWriteJSONStep(),
+		steps.NewNormalisationStep(),
+		steps.NewDeduplicationStep(),
+		steps.NewSynchronisationStep(),
+		steps.NewAiParserStep(),
+		uploadStep,
+	}
+
+	// Filter steps based on configuration
+	var pipelineSteps []pipeline.Step
+
+	// Only use configured steps
+	for _, step := range allSteps {
+		if config.ShouldRunPipelineStep(step.Name()) {
+			utils.Log("Including pipeline step: %s", step.Name())
+			pipelineSteps = append(pipelineSteps, step)
+		}
+	}
+
+	return pipelineSteps
 }

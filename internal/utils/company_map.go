@@ -45,11 +45,12 @@ var companyMap = []struct {
 		},
 	},
 	{
-		Name: "Commonwealth Bank",
+		Name: "CommBank",
 		Matches: []string{
 			"Commonwealth Bank",
 			"CommBank",
 			"CBA",
+			"BankWest",
 		},
 	},
 	{

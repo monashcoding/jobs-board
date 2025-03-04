@@ -61,7 +61,7 @@ func parseSearchResults(resp *http.Response) ([]Job, error) {
 }
 
 func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listing, error) {
-	jobURL := fmt.Sprintf("%s/jobs/view/%s", s.baseURL, job.ID)
+	jobURL := fmt.Sprintf("%s/jobs/view/%s", s.URL(), job.ID)
 
 	req, err := http.NewRequest("GET", jobURL, nil)
 	if err != nil {

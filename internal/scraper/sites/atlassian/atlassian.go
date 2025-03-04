@@ -1,4 +1,3 @@
-// File: internal\scraper\sites\atlassian\atlassian.go
 package atlassian
 
 import (
@@ -18,7 +17,7 @@ import (
 
 type AtlassianScraper struct {
 	unblocker unblocker.Service
-	baseURL   string
+	jobLimit  int
 }
 
 type JobListing struct {
@@ -65,8 +64,11 @@ func NewAtlassianScraper() *AtlassianScraper {
 
 	return &AtlassianScraper{
 		unblocker: unblockerService,
-		baseURL:   "https://www.atlassian.com",
 	}
+}
+
+func (s *AtlassianScraper) SetJobLimit(limit int) {
+	s.jobLimit = limit
 }
 
 func (s *AtlassianScraper) Name() string {
@@ -74,7 +76,7 @@ func (s *AtlassianScraper) Name() string {
 }
 
 func (s *AtlassianScraper) URL() string {
-	return s.baseURL
+	return "https://www.atlassian.com"
 }
 
 func (s *AtlassianScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
@@ -96,12 +98,15 @@ func (s *AtlassianScraper) Scrape(ctx context.Context) ([]models.Listing, error)
 		}
 	}
 
+	if s.jobLimit > 0 && (len(listings) > s.jobLimit) {
+		listings = listings[:s.jobLimit]
+	}
 	utils.Success("Found %d relevant Atlassian listings", len(listings))
 	return listings, nil
 }
 
 func (s *AtlassianScraper) fetchJobs(ctx context.Context) ([]JobListing, error) {
-	jobsURL := s.baseURL + "/endpoint/careers/listings"
+	jobsURL := s.URL() + "/endpoint/careers/listings"
 
 	req, err := http.NewRequest("GET", jobsURL, nil)
 	if err != nil {
@@ -166,7 +171,7 @@ func (s *AtlassianScraper) convertToListing(job JobListing) (models.Listing, err
 	applicationURL := job.ApplyURL
 
 	// Set company details
-	companyWebsite := s.baseURL
+	companyWebsite := s.URL()
 	logo := "https://logo.clearbit.com/atlassian.com"
 
 	listing := models.Listing{
@@ -186,7 +191,7 @@ func (s *AtlassianScraper) convertToListing(job JobListing) (models.Listing, err
 		Type:          &jobType,
 		Locations:     []models.LocationType{models.AUSTRALIA, models.NSW},
 		StudyFields:   []string{"IT & Computer Science", "Engineering & Mathematics"},
-		Source:        models.MULTIPLE,
+		Source:        models.ATLASSIAN,
 		IndustryField: models.BIG_TECH,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),

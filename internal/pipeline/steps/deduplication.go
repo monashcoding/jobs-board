@@ -3,9 +3,10 @@ package steps
 import (
 	"context"
 	"fmt"
-
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
+	"sort"
+	"strings"
 )
 
 type DeduplicationStep struct {
@@ -24,78 +25,92 @@ func (s *DeduplicationStep) Name() string {
 
 func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
 	/*------------------------------------------------*/
-	/* Deduplication Strategy:                        */
-	/* Listing counts as a duplicate if:				      */
-	/* - Title is identical											      */
-	/* - Company is identical											    */
-	/* - Locations is identical											  */
-	/* - ApplicationURL is identical								  */
+	/* Deduplication Strategy (in order):             */
+	/* 1. Source Override - Only keep listings from   */
+	/*    the preferred source for specific companies */
+	/* 2. Application URL - Remove listings with      */
+	/*    duplicate application URLs (with exceptions)*/
+	/* 3. Title/Company/Type/Location - Remove        */
+	/*    listings that match on all these fields     */
 	/*------------------------------------------------*/
 
-	dict := make(map[string]models.Listing)
-
-	for _, listing := range listings {
-		hash := fmt.Sprintf("%s-%s", listing.Title, listing.Company.Name)
-
-		existingModel, ok := dict[hash]
-
-		if !ok {
-			dict[hash] = listing
-		} else {
-			existingModel.SourceURLs = append(existingModel.SourceURLs, listing.SourceURLs...)
-			utils.Log("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
-			utils.Custom("Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
-		}
+	if len(listings) == 0 {
+		return listings, nil
 	}
 
-	var uniqueListings []models.Listing
-	for _, listing := range dict {
-		uniqueListings = append(uniqueListings, listing)
-	}
-
-	dict2 := make(map[string]models.Listing)
+	var result []models.Listing
+	sourceOverrideMap := utils.GetSourceOverrideMap()
 	sameURLCompany := utils.GetSameURLCompanyMap()
 
-	for _, listing := range uniqueListings {
-		var hash string
+	// Step 1: Filter by source override
+	sourceFiltered := make([]models.Listing, 0, len(listings))
+	for _, listing := range listings {
+		preferredSource, hasPreference := sourceOverrideMap[listing.Company.Name]
+		if hasPreference && listing.Source != preferredSource {
+			utils.Custom("[Source Override] Skipping %s | %s from %s", listing.Company.Name, listing.Title, listing.Source)
+			continue
+		}
+		sourceFiltered = append(sourceFiltered, listing)
+	}
+
+	// Step 2: Filter by application URL
+	seenURLs := make(map[string]bool)
+	urlFiltered := make([]models.Listing, 0, len(sourceFiltered))
+
+	for _, listing := range sourceFiltered {
+		// Skip URL check for special companies
 		if sameURLCompany[listing.Company.Name] {
-			hash = fmt.Sprintf("%s-%s", listing.Title, listing.Company.Name)
-		} else {
-			hash = fmt.Sprintf("%s", *listing.ApplicationURL)
+			urlFiltered = append(urlFiltered, listing)
+			continue
 		}
 
-		existingModel, ok := dict2[hash]
-
-		if !ok {
-			dict2[hash] = listing
-		} else {
-			existingModel.SourceURLs = append(existingModel.SourceURLs, listing.SourceURLs...)
-			utils.Log("App url Deduplication: Duplicate listing found: %s | %s", listing.Company.Name, listing.Title)
+		// Check if URL already seen
+		if listing.ApplicationURL != nil {
+			url := *listing.ApplicationURL
+			if seenURLs[url] {
+				utils.Custom("[Apply URL Duplicate] Skipping %s | %s from %s", listing.Company.Name, listing.Title, listing.Source)
+				continue
+			}
+			seenURLs[url] = true
 		}
+
+		urlFiltered = append(urlFiltered, listing)
 	}
 
-	var uniqueListings2 []models.Listing
-	for _, listing := range dict2 {
-		uniqueListings2 = append(uniqueListings2, listing)
-	}
+	// Step 3: Filter by title, company, type, and location
+	seenListings := make(map[string]bool)
 
-	// Loop through uniqueListings2 and if the source of the listing is not the same as the source override map, remove it
-	sourceOverrideMap := utils.GetSourceOverrideMap()
-	var uniqueListings3 []models.Listing
-	for _, listing := range uniqueListings2 {
-		if sourceOverrideMap[listing.Company.Name] == listing.Source {
-			uniqueListings3 = append(uniqueListings3, listing)
-			// else if company name is not in sourceOverrideMap, add it to uniqueListings3
-		} else if _, ok := sourceOverrideMap[listing.Company.Name]; !ok {
-			uniqueListings3 = append(uniqueListings3, listing)
-		} else {
-			utils.Log("Deduplication: Source override map mismatch: %s | %s", listing.Company.Name, listing.Title)
+	for _, listing := range urlFiltered {
+		// Create unique key from title, company, type, and locations
+		var typeStr string
+		if listing.Type != nil {
+			typeStr = string(*listing.Type)
 		}
+
+		// Convert locations to strings and sort them for consistent hashing
+		locStrs := make([]string, len(listing.Locations))
+		for i, loc := range listing.Locations {
+			locStrs[i] = string(loc)
+		}
+		sort.Strings(locStrs)
+
+		// Create hash
+		hash := fmt.Sprintf("%s|%s|%s|%s",
+			listing.Title,
+			listing.Company.Name,
+			typeStr,
+			strings.Join(locStrs, ","))
+
+		if seenListings[hash] {
+			utils.Custom("[Hash Exact Match] Skipping %s | %s from %s", listing.Company.Name, listing.Title, listing.Source)
+			continue
+		}
+
+		seenListings[hash] = true
+		result = append(result, listing)
 	}
 
-	// process and insert listings. objects with existing IDs will be overwritten
-	utils.Success("Deduplication: %d -> %d listings", len(listings), len(uniqueListings3))
-	utils.Custom("Deduplication: %d -> %d listings", len(listings), len(uniqueListings3))
+	utils.Custom("Deduplication: %d → %d listings", len(listings), len(result))
 
-	return uniqueListings3, nil
+	return result, nil
 }

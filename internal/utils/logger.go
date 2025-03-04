@@ -86,7 +86,7 @@ func logWithOptionalLevel(message string, level string, skip int, color string) 
 	// Get the caller's function name
 	pc, _, _, ok := runtime.Caller(skip)
 	functionName := "unknown"
-	timestamp := time.Now().Format("15:04:05") // Move timestamp declaration here
+	timestamp := time.Now().Format("15:04:05")
 
 	if ok {
 		fn := runtime.FuncForPC(pc)
@@ -96,24 +96,12 @@ func logWithOptionalLevel(message string, level string, skip int, color string) 
 			// Split by "/" and get the last two parts (package.function)
 			parts := strings.Split(fullName, "/")
 			functionName = parts[len(parts)-1]
-
-			// Store the log entry
-			if level == "FATAL" || level == "ERROR" || level == "CUSTOM" {
-				logEntry := LogEntry{
-					Timestamp: timestamp,
-					Level:     level,
-					Function:  functionName,
-					Message:   message,
-					Color:     color,
-				}
-				LogStore = append(LogStore, logEntry)
-			}
 		}
 	}
 
 	resetColor := "\033[0m"
 
-	// Store the log entry
+	// Store the log entry only once and only for specific levels
 	if level == "FATAL" || level == "ERROR" || level == "CUSTOM" {
 		logEntry := LogEntry{
 			Timestamp: timestamp,
@@ -125,13 +113,15 @@ func logWithOptionalLevel(message string, level string, skip int, color string) 
 		LogStore = append(LogStore, logEntry)
 	}
 
+	// Format the log message
 	var logMessage string
 	if level != "" {
-		logMessage = fmt.Sprintf("%s[%s] [%s %s] [%s] %s\n", color, level, functionName, timestamp, message, resetColor)
+		logMessage = fmt.Sprintf("%s[%s] [%s %s] %s%s\n", color, level, functionName, timestamp, message, resetColor)
 	} else {
 		logMessage = fmt.Sprintf("%s[%s %s] %s%s\n", color, functionName, timestamp, message, resetColor)
 	}
 
+	// Print to console
 	fmt.Print(logMessage)
 
 	// Call the log handler if set

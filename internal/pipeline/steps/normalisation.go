@@ -3,7 +3,6 @@ package steps
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -287,18 +286,21 @@ func StandardiseCompanyName(listing models.Listing) (models.Listing, error) {
 }
 
 func AddSponsoredCompanies(listing models.Listing) (models.Listing, error) {
-	// Load .env file
-	sponsoredCompaniesStr := os.Getenv("SPONSORED_COMPANIES")
 
 	// Convert sponsoredCompaniesStr to list of strings
-	var sponsoredCompanies []string
-	for _, company := range strings.Split(sponsoredCompaniesStr, ",") {
-		sponsoredCompanies = append(sponsoredCompanies, strings.TrimSpace(company))
+	var sponsoredCompanies = []string{
+		"Atlassian",
+		"IMC",
+		"Citadel Securities",
+		"Macquarie Group",
+		"Optiver",
+		"Jane Street",
+		"Susquehanna",
 	}
 
 	// If the company name is in the list of sponsored companies, set the listing as sponsored
 	for _, company := range sponsoredCompanies {
-		if strings.EqualFold(listing.Company.Name, company) {
+		if strings.EqualFold(listing.Company.Name, strings.TrimSpace(company)) {
 			listing.IsSponsored = true
 			break
 		}
