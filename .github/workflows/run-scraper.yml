@@ -2,8 +2,9 @@ name: MPLOY Backend Scraper
 
 on:
   schedule:
-    # Run daily at 2AM UTC (adjust as needed)
-    - cron: '0 2 * * *'
+    # Run at 8am and 8pm Sydney time (AEST/AEDT)
+    - cron: '0 21 * * *'  # 8am Sydney time (AEDT is UTC+11, AEST is UTC+10)
+    - cron: '0 6 * * *'   # 5pm Sydney time (AEDT is UTC+11, AEST is UTC+10)
   workflow_dispatch:
     # Allow manual triggering
 
@@ -17,11 +18,12 @@ env:
   AZ_OPENAI_ENDPOINT: ${{ secrets.AZ_OPENAI_ENDPOINT }}
   AZ_API_KEY: ${{ secrets.AZ_API_KEY }}
   DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+  BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
   VERSION: ${{ secrets.VERSION }}
   # Optional configs - uncomment and customize as needed
   # RUN_SCRAPERS: "GradConnections,LinkedIn,Prosple,JaneStreet,Atlassian"
   # RUN_PIPELINE_STEPS: "Normalisation,Deduplication,Synchronisation,MVPUpload"
-  SCRAPER_JOB_LIMITS: "GradConnections:50,LinkedIn:50,Prosple:50"
+#  SCRAPER_JOB_LIMITS: "GradConnections:50,LinkedIn:50,Prosple:50"
 
 jobs:
   scrape:
@@ -29,34 +31,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Send Discord notification (Started)
         if: success()
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          title: "🚀 MPLOY Scraper Started"
-          description: "Job scraping process has been initiated"
-          color: 0x3498db
-          username: MPLOY Scraper Bot
+          username: MAC GitHub Actions
+          title: "🚀 Scraper Started"
           url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          fields: |
-            [
-              {
-                "name": "Start Time",
-                "value": "${{ format(github.event.repository.pushed_at || github.event.schedule || github.event.head_commit.timestamp || now(), 'dddd, MMMM Do YYYY, HH:mm:ss Z') }}",
-                "inline": true
-              },
-              {
-                "name": "GitHub Action",
-                "value": "[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",
-                "inline": true
-              }
-            ]
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: '1.21'
           cache: true
@@ -85,7 +72,7 @@ jobs:
 
       - name: Upload job listings for debugging
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: job-listings
           path: debug/write-json/
@@ -96,19 +83,11 @@ jobs:
         uses: sarisia/actions-status-discord@v1
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          title: "✅ MPLOY Scraper Completed"
-          description: "Job scraping process has completed"
           status: ${{ job.status }}
-          color: 0x2ecc71
-          username: MPLOY Scraper Bot
+          username: MAC GitHub Actions
           url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           fields: |
             [
-              {
-                "name": "Completion Time",
-                "value": "${{ format(now(), 'dddd, MMMM Do YYYY, HH:mm:ss Z') }}",
-                "inline": true
-              },
               {
                 "name": "GitHub Action",
                 "value": "[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",

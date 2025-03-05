@@ -91,7 +91,12 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 		resp, err := s.executeRequest(ctx, req)
 		if err != nil {
 			lastError = fmt.Errorf("attempt %d failed: %w", attempt, err)
-			utils.Error("[CODE %d] Error fetching %s - %v", resp.StatusCode, req.URL.Path, err)
+			// Don't try to access resp if it's nil
+			if resp != nil {
+				utils.Error("[CODE %d] Error fetching %s - %v", resp.StatusCode, req.URL.Path, err)
+			} else {
+				utils.Error("Error fetching %s - %v", req.URL.Path, err)
+			}
 			continue
 		}
 

@@ -238,13 +238,6 @@ func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listi
 		oldActive,
 		newActive,
 	)
-	utils.Custom("Inserted %d new listings. Total Listings %d -> %d | Active Listings %d -> %d",
-		newTotal-oldTotal,
-		oldTotal,
-		newTotal,
-		oldActive,
-		newActive,
-	)
 
 	return listings, nil
 }

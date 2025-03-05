@@ -6,8 +6,9 @@ func GetSameURLCompanyMap() map[string]bool {
 }
 
 var sameURLCompany = map[string]bool{
-	"Ernst & Young":     true,
-	"Jane Street":       true,
-	"Commonwealth Bank": true,
+	"Ernst & Young": true,
+	"Jane Street":   true,
+	"CommBank":      true,
+	"NAB":           true,
 	"Australian Energy Market Operator (AEMO)": true,
 }

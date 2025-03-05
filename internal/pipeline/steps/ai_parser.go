@@ -10,16 +10,28 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
-type AIParserStep struct{}
+type AIParserStep struct {
+	completedJobs int32         // Atomic counter for completed jobs
+	totalJobs     int32         // Total number of jobs to process
+	semaphore     chan struct{} // Semaphore to limit concurrent API requests
+	maxConcurrent int           // Maximum concurrent requests
+	sleepDuration time.Duration // How long to sleep between API calls
+}
 
 func NewAiParserStep() *AIParserStep {
-	return &AIParserStep{}
+	maxConcurrent := 20 // Allow 20 concurrent API calls
+	return &AIParserStep{
+		maxConcurrent: maxConcurrent,
+		semaphore:     make(chan struct{}, maxConcurrent),
+		sleepDuration: 1 * time.Second, // Sleep 1 seconds between API calls
+	}
 }
 
 func (s *AIParserStep) Name() string {
@@ -28,7 +40,13 @@ func (s *AIParserStep) Name() string {
 
 func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
 	parsedListings := make([]models.Listing, len(listings)) // Preallocate slice
-	utils.Log("Running %d listings through AI Parser in parallel", len(listings))
+	s.totalJobs = int32(len(listings) * 3)                  // Each listing has 3 AI operations
+	s.completedJobs = 0                                     // Reset counter
+
+	utils.Log("Running %d listings (%d operations) through AI Parser.", len(listings), s.totalJobs)
+
+	utils.Log("Max Concurrent Requests: %d | Sleep: %s between requests",
+		s.maxConcurrent, s.sleepDuration.String())
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, len(listings)) // Buffered channel for errors
@@ -41,25 +59,21 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 			defer wg.Done()
 
 			// Fix description
-			updatedListing, err := FixDescriptionFormat(listing)
+			updatedListing, err := s.FixDescriptionFormat(ctx, listing)
 			if err != nil {
 				utils.Warn("Failed to fix description format: %v", err)
 				errCh <- err
 			}
 
-			time.Sleep(2 * time.Minute)
-
 			// Get industry field
-			updatedListing, err = GetIndustryFieldandType(updatedListing)
+			updatedListing, err = s.GetIndustryFieldandType(ctx, updatedListing)
 			if err != nil {
 				utils.Warn("Failed to get industry field: %v", err)
 				errCh <- err
 			}
 
-			time.Sleep(2 * time.Minute)
-
 			// Generate one liner description
-			updatedListing, err = GenerateOneLinerDesc(updatedListing)
+			updatedListing, err = s.GenerateOneLinerDesc(ctx, updatedListing)
 			if err != nil {
 				utils.Warn("Failed to generate one liner description: %v", err)
 				errCh <- err
@@ -86,6 +100,22 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 	return parsedListings, finalErr
 }
 
+// acquireSemaphore acquires a slot in the semaphore, blocking if necessary
+func (s *AIParserStep) acquireSemaphore(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case s.semaphore <- struct{}{}:
+		return nil
+	}
+}
+
+// releaseSemaphore releases a slot in the semaphore
+func (s *AIParserStep) releaseSemaphore() {
+	time.Sleep(s.sleepDuration)
+	<-s.semaphore
+}
+
 type ChatRequest struct {
 	Messages []struct {
 		Role    string `json:"role"`
@@ -102,7 +132,7 @@ type ChatResponse struct {
 	} `json:"choices"`
 }
 
-func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
+func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	// Set endpoint and API key
 	endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
 	apiKey := os.Getenv("AZ_API_KEY")
@@ -119,7 +149,7 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 	}
 
 	// Make the request
-	chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
+	chatResponse, err := s.makeChatRequest(ctx, endpoint, apiKey, chatRequest, "FixDescription")
 	if err != nil {
 		return listing, err
 	}
@@ -132,16 +162,15 @@ func FixDescriptionFormat(listing models.Listing) (models.Listing, error) {
 		*listing.Description = desc
 	} else {
 		utils.Error("No response received.")
-		// utils.Debug("chatRequest: %v", chatRequest)
 	}
+
 	// Replace all breaks
 	*listing.Description = strings.ReplaceAll(*listing.Description, "\\n", "")
-	// *listing.Description = strings.ReplaceAll(*listing.Description, "<br/>", "")
 
 	return listing, nil
 }
 
-func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
+func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	// Set endpoint and API key
 	endpoint := os.Getenv("AZ_OPENAI_ENDPOINT")
 	apiKey := os.Getenv("AZ_API_KEY")
@@ -158,7 +187,7 @@ func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
 	}
 
 	// Make the request
-	chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
+	chatResponse, err := s.makeChatRequest(ctx, endpoint, apiKey, chatRequest, "GetIndustryField")
 	if err != nil {
 		return listing, err
 	}
@@ -203,14 +232,23 @@ func GetIndustryFieldandType(listing models.Listing) (models.Listing, error) {
 
 	} else {
 		utils.Error("No response received from Chat.")
-		// utils.Debug("chatRequest: %v", chatRequest)
 	}
 
 	return listing, nil
 }
 
-func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (ChatResponse, error) {
+func (s *AIParserStep) makeChatRequest(ctx context.Context, endpoint string, apiKey string, chatRequest ChatRequest, operationType string) (ChatResponse, error) {
 	var chatResponse ChatResponse
+
+	// Acquire a slot in the semaphore before making the request
+	if err := s.acquireSemaphore(ctx); err != nil {
+		return chatResponse, fmt.Errorf("failed to acquire semaphore: %w", err)
+	}
+	// Release the semaphore when done
+	defer s.releaseSemaphore()
+
+	// Log that we're starting the API call
+	utils.Debug("Making %s API call (concurrency: %d/%d)", operationType, len(s.semaphore), cap(s.semaphore))
 
 	// Convert the request to JSON
 	requestBody, err := json.Marshal(chatRequest)
@@ -236,8 +274,13 @@ func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (C
 	}
 	defer resp.Body.Close()
 
-	// Log remaining tokens
-	utils.Debug("Chat response received. Remaining Tokens: %s", resp.Header["X-Ratelimit-Remaining-Tokens"])
+	// Increment completed jobs counter
+	current := atomic.AddInt32(&s.completedJobs, 1)
+	total := atomic.LoadInt32(&s.totalJobs)
+
+	// Log progress and token usage in a single statement
+	utils.Log("AI Parser progress: %d/%d (%.1f%%) - %s completed | Remaining Tokens: %s",
+		current, total, (float64(current)/float64(total))*100, operationType, resp.Header["X-Ratelimit-Remaining-Tokens"])
 
 	// Read and parse the response
 	body, err := ioutil.ReadAll(resp.Body)
@@ -258,8 +301,7 @@ func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (C
 	return chatResponse, nil
 }
 
-// Generate one liner description
-func GenerateOneLinerDesc(listing models.Listing) (models.Listing, error) {
+func (s *AIParserStep) GenerateOneLinerDesc(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	// Skip if one liner description is already present
 	if listing.OneLinerDesc == nil {
 		// Set endpoint and API key
@@ -278,7 +320,7 @@ func GenerateOneLinerDesc(listing models.Listing) (models.Listing, error) {
 		}
 
 		// Make the request
-		chatResponse, err := makeChatRequest(endpoint, apiKey, chatRequest)
+		chatResponse, err := s.makeChatRequest(ctx, endpoint, apiKey, chatRequest, "OneLinerDesc")
 		if err != nil {
 			return listing, err
 		}
@@ -290,10 +332,13 @@ func GenerateOneLinerDesc(listing models.Listing) (models.Listing, error) {
 			listing.OneLinerDesc = &oneLinerDescStr
 		} else {
 			utils.Error("No response received.")
-			// utils.Debug("chatRequest: %v", chatRequest)
 		}
 	} else {
 		utils.Debug("One liner description already exists.")
+		// Still increment the counter for completed jobs
+		atomic.AddInt32(&s.completedJobs, 1)
+		current := atomic.LoadInt32(&s.completedJobs)
+		utils.Log("AI Parser progress: %d/%d (%.1f%%)", current, s.totalJobs, (float64(current)/float64(s.totalJobs))*100)
 	}
 
 	return listing, nil

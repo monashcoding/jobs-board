@@ -35,8 +35,10 @@ func main() {
 
 func RunScraper() {
 	startTime := time.Now()
-	if err := utils.SendScraperStartEmbed(); err != nil {
-		utils.Warn("Failed to send start notification to Discord: %v", err)
+
+	// Whitelist current IP with BrightData before starting the scraper
+	if err := utils.WhitelistCurrentIP(); err != nil {
+		utils.Fatal("Failed to whitelist IP with BrightData: %v", err)
 	}
 
 	// Set up context with cancellation
