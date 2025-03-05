@@ -35,7 +35,7 @@ type Job struct {
 func NewJaneStreetScraper() *JaneStreetScraper {
 	config := unblocker.Config{
 		Features: unblocker.Features{
-			UseRateLimiting: true,
+			UseRateLimiting: false,
 			UseIPRotation:   true,
 		},
 		BrightData: &unblocker.BrightDataConfig{

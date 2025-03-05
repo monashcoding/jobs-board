@@ -237,7 +237,7 @@ func makeChatRequest(endpoint string, apiKey string, chatRequest ChatRequest) (C
 	defer resp.Body.Close()
 
 	// Log remaining tokens
-	utils.Debug("Remaining Tokens: %s", resp.Header["X-Ratelimit-Remaining-Tokens"])
+	utils.Debug("Chat response received. Remaining Tokens: %s", resp.Header["X-Ratelimit-Remaining-Tokens"])
 
 	// Read and parse the response
 	body, err := ioutil.ReadAll(resp.Body)

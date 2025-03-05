@@ -21,7 +21,7 @@ type GradconScraper struct {
 func NewGradconScraper() *GradconScraper {
 	config := unblocker.Config{
 		Features: unblocker.Features{
-			UseRateLimiting: true,
+			UseRateLimiting: false,
 			UseIPRotation:   true,
 		},
 		BrightData: &unblocker.BrightDataConfig{

@@ -22,13 +22,18 @@ func (s *GradconScraper) MergeDetailedDescriptionsWithListings(listings []models
 	// Call the gradconnect customer organisation API for each company Id
 	utils.Log("Getting detailed descriptions for %d companies", len(uniqueCompanyIds))
 
+	counter := 0
+	totalCompanies := len(uniqueCompanyIds)
+
 	for companyId := range uniqueCompanyIds {
+		utils.Log("Processing company API request %d/%d (ID: %s)", counter, totalCompanies, companyId)
 		companyApiReponse, err := SendCompanyAPIRequest(companyId, s.unblocker)
 		if err != nil {
 			utils.Warn("error getting company api response: %v", err)
 		}
 
 		gradConnectCompanyListingData = append(gradConnectCompanyListingData, *companyApiReponse...)
+		counter++
 	}
 
 	mergeCount := 0

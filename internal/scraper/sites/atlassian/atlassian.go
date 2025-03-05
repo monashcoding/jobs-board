@@ -41,7 +41,7 @@ type JobListing struct {
 func NewAtlassianScraper() *AtlassianScraper {
 	config := unblocker.Config{
 		Features: unblocker.Features{
-			UseRateLimiting: true,
+			UseRateLimiting: false,
 			UseIPRotation:   true,
 		},
 		BrightData: &unblocker.BrightDataConfig{

@@ -20,7 +20,7 @@ type ProspleScraper struct {
 func NewProspleScraper() *ProspleScraper {
 	config := unblocker.Config{
 		Features: unblocker.Features{
-			UseRateLimiting: true,
+			UseRateLimiting: false,
 			UseIPRotation:   true,
 		},
 		BrightData: &unblocker.BrightDataConfig{
