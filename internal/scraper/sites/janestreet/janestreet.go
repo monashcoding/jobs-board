@@ -81,7 +81,7 @@ func (s *JaneStreetScraper) Scrape(ctx context.Context) ([]models.Listing, error
 	var listings []models.Listing
 	for _, job := range jobs {
 		// Filter for HK jobs that are either internships or new grad positions
-		if job.City == "HKG" && (job.Availability == "Summer Internship" || job.Availability == "Full-Time: New Grad") {
+		if job.City == "HKG" && (job.Availability == "Summer Internship" || job.Availability == "Winter Internship" || job.Availability == "Full-Time: New Grad") {
 			listing, err := s.convertToListing(job)
 			if err != nil {
 				utils.Error("Failed to convert job %d: %v", job.ID, err)

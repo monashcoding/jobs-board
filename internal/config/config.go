@@ -29,7 +29,7 @@ var EnvironmentVars = []EnvVar{
 	{Name: "BRIGHTDATA_ZONE_NAME", Required: true},
 	{Name: "BRIGHTDATA_PASSWORD", Required: true},
 	{Name: "BRIGHTDATA_API_TOKEN", Required: true},
-	
+
 	// Azure OpenAI configuration
 	{Name: "AZ_OPENAI_ENDPOINT", Required: true},
 	{Name: "AZ_API_KEY", Required: true},
