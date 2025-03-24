@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
@@ -81,7 +82,7 @@ func (s *JaneStreetScraper) Scrape(ctx context.Context) ([]models.Listing, error
 	var listings []models.Listing
 	for _, job := range jobs {
 		// Filter for HK jobs that are either internships or new grad positions
-		if job.City == "HKG" && (job.Availability == "Summer Internship" || job.Availability == "Winter Internship" || job.Availability == "Full-Time: New Grad") {
+		if job.City == "HKG" && (strings.HasPrefix(job.Availability, "Summer Internship") || strings.HasPrefix(job.Availability, "Winter Internship") || job.Availability == "Full-Time: New Grad") {
 			listing, err := s.convertToListing(job)
 			if err != nil {
 				utils.Error("Failed to convert job %d: %v", job.ID, err)
@@ -129,7 +130,7 @@ func (s *JaneStreetScraper) fetchJobs(ctx context.Context) ([]Job, error) {
 func (s *JaneStreetScraper) convertToListing(job Job) (models.Listing, error) {
 	// Determine job type based on availability
 	var jobType models.JobType
-	if job.Availability == "Summer Internship" {
+	if strings.Contains(job.Availability, "Internship") {
 		jobType = models.INTERN
 	} else {
 		jobType = models.GRADUATE
