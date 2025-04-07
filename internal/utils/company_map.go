@@ -79,4 +79,11 @@ var companyMap = []struct {
 			"IMC Trading Australia",
 		},
 	},
+	{
+		Name: "Atlassian",
+		Matches: []string{
+			"Atlassian",
+			"Atlassian Australia",
+		},
+	},
 }
