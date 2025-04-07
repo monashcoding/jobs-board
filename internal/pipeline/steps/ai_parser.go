@@ -195,8 +195,16 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 	// Output the assistant's response
 	if len(chatResponse.Choices) > 0 {
 		splitResponse := strings.Split(chatResponse.Choices[0].Message.Content, "#")
-		industryField := strings.TrimSpace(splitResponse[0])
-		jobType := strings.TrimSpace(splitResponse[1])
+
+		industryField := "OTHER_INDUSTRY"
+		jobType := "OTHER"
+
+		if len(splitResponse) >= 2 {
+			industryField = strings.TrimSpace(splitResponse[0])
+			jobType = strings.TrimSpace(splitResponse[1])
+		} else {
+			utils.Warn("Unexpected format in AI response: %q. Falling back to default values.", response)
+		}
 
 		// Define a map for quick lookup
 		industryMap := map[string]models.IndustryField{
