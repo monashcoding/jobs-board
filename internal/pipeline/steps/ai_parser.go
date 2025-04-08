@@ -203,7 +203,7 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 			industryField = strings.TrimSpace(splitResponse[0])
 			jobType = strings.TrimSpace(splitResponse[1])
 		} else {
-			utils.Warn("Unexpected format in AI response: %q. Falling back to default values.", response)
+			utils.Warn("Unexpected format in AI response: %q. Falling back to default values.", chatResponse)
 		}
 
 		// Define a map for quick lookup
