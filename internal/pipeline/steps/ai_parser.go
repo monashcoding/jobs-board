@@ -108,20 +108,14 @@ func (s *AIParserStep) releaseSemaphore() {
 
 type ChatRequest struct {
 	Model    string `json:"model"`
-	Model    string `json:"model"`
 	Messages []struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	} `json:"messages"`
 	Stream bool `json:"stream"`
-	Stream bool `json:"stream"`
 }
 
 type ChatResponse struct {
-	Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	} `json:"message"`
 	Message struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
@@ -161,8 +155,6 @@ func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.
 
 func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	chatRequest := ChatRequest{
-		Model:  "llama3.2:3b",
-		Stream: false,
 		Model:  "llama3.2:3b",
 		Stream: false,
 		Messages: []struct {
@@ -296,8 +288,6 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 	total := atomic.LoadInt32(&s.totalJobs)
 	utils.Log("AI Parser progress: %d/%d (%.1f%%) - %s completed",
 		current, total, (float64(current)/float64(total))*100, operationType)
-	utils.Log("AI Parser progress: %d/%d (%.1f%%) - %s completed",
-		current, total, (float64(current)/float64(total))*100, operationType)
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -309,8 +299,6 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 		return chatResponse, err
 	}
 
-	if chatResponse.Message.Content == "" {
-		utils.Error("No response received from Ollama.")
 	if chatResponse.Message.Content == "" {
 		utils.Error("No response received from Ollama.")
 		utils.Debug("Response body: %s", body)
