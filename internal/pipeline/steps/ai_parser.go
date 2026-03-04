@@ -117,19 +117,19 @@ func (s *AIParserStep) releaseSemaphore() {
 }
 
 type ChatRequest struct {
+	Model    string `json:"model"`
 	Messages []struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	} `json:"messages"`
+	Stream bool `json:"stream"`
 }
 
 type ChatResponse struct {
-	Choices []struct {
-		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
+	Message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	} `json:"message"`
 }
 
 func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.Listing) (models.Listing, error) {
@@ -155,8 +155,8 @@ func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.
 	}
 
 	// Output the assistant's response
-	if len(chatResponse.Choices) > 0 {
-		desc := strings.TrimPrefix(chatResponse.Choices[0].Message.Content, "```html")
+	if chatResponse.Message.Content != "" {
+		desc := strings.TrimPrefix(chatResponse.Message.Content, "```html")
 		desc = strings.TrimSuffix(desc, "```")
 		desc = strings.TrimSpace(desc)
 		*listing.Description = desc
@@ -177,12 +177,14 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 
 	// Construct the request body
 	chatRequest := ChatRequest{
+		Model:  "llama3.2:3b",
+		Stream: false,
 		Messages: []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		}{
 			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, OTHER_INDUSTRY followed by whether it is an INTERN, GRADUATE or OTHER job type. Output in the form: INDUSTRY#JOBTYPE \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
+			{Role: "user", Content: "...your prompt..."},
 		},
 	}
 
@@ -193,8 +195,8 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 	}
 
 	// Output the assistant's response
-	if len(chatResponse.Choices) > 0 {
-		splitResponse := strings.Split(chatResponse.Choices[0].Message.Content, "#")
+	if chatResponse.Message.Content != "" {
+		splitResponse := strings.Split(chatResponse.Message.Content, "#")
 
 		industryField := "OTHER_INDUSTRY"
 		jobType := "OTHER"
@@ -248,49 +250,37 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 func (s *AIParserStep) makeChatRequest(ctx context.Context, endpoint string, apiKey string, chatRequest ChatRequest, operationType string) (ChatResponse, error) {
 	var chatResponse ChatResponse
 
-	// Acquire a slot in the semaphore before making the request
 	if err := s.acquireSemaphore(ctx); err != nil {
 		return chatResponse, fmt.Errorf("failed to acquire semaphore: %w", err)
 	}
-	// Release the semaphore when done
 	defer s.releaseSemaphore()
 
-	// Log that we're starting the API call
 	utils.Debug("Making %s API call (concurrency: %d/%d)", operationType, len(s.semaphore), cap(s.semaphore))
 
-	// Convert the request to JSON
 	requestBody, err := json.Marshal(chatRequest)
 	if err != nil {
 		return chatResponse, err
 	}
 
-	// Make the HTTP request
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", "http://localhost:11434/api/chat", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return chatResponse, err
 	}
 
-	// Set the necessary headers
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("api-key", apiKey)
 
-	// Execute the request
 	resp, err := client.Do(req)
 	if err != nil {
 		return chatResponse, err
 	}
 	defer resp.Body.Close()
 
-	// Increment completed jobs counter
 	current := atomic.AddInt32(&s.completedJobs, 1)
 	total := atomic.LoadInt32(&s.totalJobs)
+	utils.Log("AI Parser progress: %d/%d (%.1f%%) - %s completed",
+		current, total, (float64(current)/float64(total))*100, operationType)
 
-	// Log progress and token usage in a single statement
-	utils.Log("AI Parser progress: %d/%d (%.1f%%) - %s completed | Remaining Tokens: %s",
-		current, total, (float64(current)/float64(total))*100, operationType, resp.Header["X-Ratelimit-Remaining-Tokens"])
-
-	// Read and parse the response
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return chatResponse, err
@@ -301,8 +291,8 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, endpoint string, api
 		return chatResponse, err
 	}
 
-	if len(chatResponse.Choices) == 0 {
-		utils.Error("No response received from Chat.")
+	if chatResponse.Message.Content == "" {
+		utils.Error("No response received from Ollama.")
 		utils.Debug("Response body: %s", body)
 	}
 
@@ -334,8 +324,8 @@ func (s *AIParserStep) GenerateOneLinerDesc(ctx context.Context, listing models.
 		}
 
 		// Output the assistant's response
-		if err == nil && len(chatResponse.Choices) > 0 {
-			oneLinerDesc := chatResponse.Choices[0].Message.Content
+		if err == nil && chatResponse.Message.Content != "" {
+			oneLinerDesc := chatResponse.Message.Content
 			oneLinerDescStr := strings.TrimSpace(oneLinerDesc)
 			listing.OneLinerDesc = &oneLinerDescStr
 		} else {
