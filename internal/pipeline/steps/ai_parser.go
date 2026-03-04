@@ -170,7 +170,7 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 			Content string `json:"content"`
 		}{
 			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "...your prompt..."},
+			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, OTHER_INDUSTRY followed by whether it is an INTERN, GRADUATE or OTHER job type. Output in the form: INDUSTRY#JOBTYPE \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
 		},
 	}
 
