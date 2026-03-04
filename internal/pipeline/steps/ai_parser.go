@@ -263,7 +263,7 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, endpoint string, api
 	}
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", "http://localhost:11434/api/chat", bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", "http://172.17.0.1:11434/api/chat", bytes.NewBuffer(requestBody))
 	if err != nil {
 		return chatResponse, err
 	}
