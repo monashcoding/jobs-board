@@ -2,11 +2,12 @@
 package config
 
 import (
-	"github.com/joho/godotenv"
-	"github.com/monashcoding/mploy-golang-core/internal/utils"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/joho/godotenv"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 // EnvVar represents an environment variable and its validation
@@ -30,9 +31,8 @@ var EnvironmentVars = []EnvVar{
 	{Name: "BRIGHTDATA_PASSWORD", Required: true},
 	{Name: "BRIGHTDATA_API_TOKEN", Required: true},
 
-	// Azure OpenAI configuration
-	{Name: "AZ_OPENAI_ENDPOINT", Required: true},
-	{Name: "AZ_API_KEY", Required: true},
+	// Ollama configuration
+	{Name: "OLLAMA_ENDPOINT", Required: true},
 
 	// Discord webhook
 	{Name: "DISCORD_WEBHOOK_URL", Required: true},
