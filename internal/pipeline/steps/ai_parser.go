@@ -116,10 +116,12 @@ type ChatRequest struct {
 }
 
 type ChatResponse struct {
-	Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	} `json:"message"`
+	Choices []struct {
+		Message struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
 }
 
 func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.Listing) (models.Listing, error) {
@@ -140,8 +142,8 @@ func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.
 		return listing, err
 	}
 
-	if chatResponse.Message.Content != "" {
-		desc := strings.TrimPrefix(chatResponse.Message.Content, "```html")
+	if len(chatResponse.Choices) > 0 {
+		desc := strings.TrimPrefix(chatResponse.Choices[0].Message.Content, "```html")
 		desc = strings.TrimSuffix(desc, "```")
 		desc = strings.TrimSpace(desc)
 		*listing.Description = desc
@@ -171,8 +173,8 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 		return listing, err
 	}
 
-	if chatResponse.Message.Content != "" {
-		splitResponse := strings.Split(chatResponse.Message.Content, "#")
+	if len(chatResponse.Choices) > 0 {
+		splitResponse := strings.Split(chatResponse.Choices[0].Message.Content, "#")
 
 		industryField := "OTHER_INDUSTRY"
 		jobType := "OTHER"
@@ -237,8 +239,8 @@ func (s *AIParserStep) GenerateOneLinerDesc(ctx context.Context, listing models.
 			return listing, err
 		}
 
-		if chatResponse.Message.Content != "" {
-			oneLinerDescStr := strings.TrimSpace(chatResponse.Message.Content)
+		if len(chatResponse.Choices) > 0 {
+			oneLinerDescStr := strings.TrimSpace(chatResponse.Choices[0].Message.Content)
 			listing.OneLinerDesc = &oneLinerDescStr
 		} else {
 			utils.Error("No response received.")
@@ -301,8 +303,8 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 		return chatResponse, err
 	}
 
-	if chatResponse.Message.Content == "" {
-		utils.Error("No response received from Ollama.")
+	if len(chatResponse.Choices) == 0 || chatResponse.Choices[0].Message.Content == "" {
+		utils.Error("No response received from OpenAI.")
 		utils.Debug("Response body: %s", body)
 	}
 
