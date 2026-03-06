@@ -124,7 +124,7 @@ type ChatResponse struct {
 
 func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	chatRequest := ChatRequest{
-		Model:  "llama3.2:3b",
+		Model:  "gpt-4o-mini",
 		Stream: false,
 		Messages: []struct {
 			Role    string `json:"role"`
@@ -155,7 +155,7 @@ func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.
 
 func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	chatRequest := ChatRequest{
-		Model:  "llama3.2:3b",
+		Model:  "gpt-4o-mini",
 		Stream: false,
 		Messages: []struct {
 			Role    string `json:"role"`
@@ -221,7 +221,7 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 func (s *AIParserStep) GenerateOneLinerDesc(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	if listing.OneLinerDesc == nil {
 		chatRequest := ChatRequest{
-			Model:  "llama3.2:3b",
+			Model:  "gpt-4o-mini",
 			Stream: false,
 			Messages: []struct {
 				Role    string `json:"role"`
@@ -268,15 +268,17 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 		return chatResponse, err
 	}
 
-	ollamaEndpoint := os.Getenv("OLLAMA_ENDPOINT")
+	openaiEndpoint := "https://api.openai.com/v1/chat/completions"
+	apiKey := os.Getenv("OPENAI_API_KEY")
 
 	client := &http.Client{}
-	req, err := http.NewRequest("POST", ollamaEndpoint, bytes.NewBuffer(requestBody))
+	req, err := http.NewRequest("POST", openaiEndpoint, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return chatResponse, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := client.Do(req)
 	if err != nil {

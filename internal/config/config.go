@@ -31,8 +31,8 @@ var EnvironmentVars = []EnvVar{
 	{Name: "BRIGHTDATA_PASSWORD", Required: true},
 	{Name: "BRIGHTDATA_API_TOKEN", Required: true},
 
-	// Ollama configuration
-	{Name: "OLLAMA_ENDPOINT", Required: true},
+	// OpenAI configuration
+	{Name: "OPENAI_API_KEY", Required: true},
 
 	// Discord webhook
 	{Name: "DISCORD_WEBHOOK_URL", Required: true},
