@@ -26,7 +26,7 @@ type AIParserStep struct {
 }
 
 func NewAiParserStep() *AIParserStep {
-	maxConcurrent := 3 // Lower concurrency for CPU Ollama
+	maxConcurrent := 20 // Lower concurrency for CPU Ollama
 	return &AIParserStep{
 		maxConcurrent: maxConcurrent,
 		semaphore:     make(chan struct{}, maxConcurrent),
