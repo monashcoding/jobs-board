@@ -265,7 +265,7 @@ func (s *AirwallexScraper) convertToListing(job jobPosting, details *jobDetailRe
 
 	applicationURL := fmt.Sprintf("https://jobs.ashbyhq.com/airwallex/%s", job.ID)
 	companyWebsite := s.URL()
-	logo := "https://logo.clearbit.com/airwallex.com"
+	logo := "https://app.ashbyhq.com/api/images/org-theme-wordmark/6e23f7f7-cd7d-4ce0-9c98-a110a190ef11/189f2f03-7a70-4685-8fa1-542ff3f2df0e/ad10e6e7-1ce7-4bb6-93ea-5559a187f21b.png"
 
 	var description *string
 	if details != nil && details.Data.JobPosting.DescriptionHtml != "" {

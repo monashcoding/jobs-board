@@ -18,6 +18,7 @@ type Job struct {
 	Title       string
 	Company     string
 	CompanyURL  string
+	CompanyLogo string
 	Location    string
 	Description string
 	JobType     string
@@ -49,6 +50,14 @@ func parseSearchResults(resp *http.Response) ([]Job, error) {
 		job.Company = companyLink.Text()
 		if href, exists := companyLink.Attr("href"); exists {
 			job.CompanyURL = href
+		}
+
+		// Extract company logo (data-delayed-url is the lazy-loaded real URL;
+		// static.licdn.com URLs are placeholder ghosts, not real logos)
+		if logoURL, exists := s.Find("div.search-entity-media img").Attr("data-delayed-url"); exists {
+			if !strings.Contains(logoURL, "static.licdn.com") {
+				job.CompanyLogo = logoURL
+			}
 		}
 
 		// Extract location
@@ -120,6 +129,7 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 		Company: models.Company{
 			Name:    job.Company,
 			Website: &job.CompanyURL,
+			Logo:    logoPtr(job.CompanyLogo),
 		},
 		ApplicationURL: &job.ApplyURL,
 		SourceURLs:     []string{jobURL},
@@ -135,4 +145,11 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 	}
 
 	return listing, nil
+}
+
+func logoPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

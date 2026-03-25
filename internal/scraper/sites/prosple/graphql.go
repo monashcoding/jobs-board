@@ -14,8 +14,9 @@ import (
 )
 
 type GraphQLRequest struct {
-	Query     string                 `json:"query"`
-	Variables map[string]interface{} `json:"variables"`
+	OperationName string                 `json:"operationName"`
+	Query         string                 `json:"query"`
+	Variables     map[string]interface{} `json:"variables"`
 }
 
 type GraphQLResponse struct {
@@ -78,10 +79,11 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-func SendGraphQLQuery(url string, query string, variables map[string]interface{}, unblocker unblocker.Service) (*GraphQLResponse, error) {
+func SendGraphQLQuery(url string, variables map[string]interface{}, unblocker unblocker.Service) (*GraphQLResponse, error) {
 	requestBody := GraphQLRequest{
-		Query:     query,
-		Variables: variables,
+		OperationName: "OpportunitiesSearch",
+		Query:         GetGraphQlQuery(),
+		Variables:     variables,
 	}
 
 	jsonBody, err := json.Marshal(requestBody)
@@ -130,6 +132,51 @@ func SendGraphQLQuery(url string, query string, variables map[string]interface{}
 	return &graphqlResp, nil
 }
 
+func GetGraphQlQuery() string {
+	return `query OpportunitiesSearch($parameters: OpportunitiesSearchInput!) {
+  opportunitiesSearch(parameters: $parameters) {
+    opportunities {
+      id
+      title
+      applyByUrl
+      detailPageURL
+      overview {
+        fullText
+      }
+      opportunityTypes {
+        label
+      }
+      applicationsOpenDate
+      applicationsCloseDate
+      locationDescription
+      studyFields {
+        label
+      }
+      physicalLocations {
+        label
+        children {
+          label
+        }
+      }
+      parentEmployer {
+        title
+        detailPageURL
+        logo {
+          thumbnail {
+            url
+          }
+        }
+      }
+      workingRights {
+        children {
+          label
+        }
+      }
+    }
+  }
+}`
+}
+
 func GetGraphQlVariables(offset int, limit int, field string) map[string]interface{} {
 	return map[string]interface{}{
 		"parameters": map[string]interface{}{
@@ -139,81 +186,27 @@ func GetGraphQlVariables(offset int, limit int, field string) map[string]interfa
 				"limit":  limit,
 			},
 			"sortBy": map[string]interface{}{
-				"criteria":  "NEWEST_OPPORTUNITIES", // NEWEST_OPPORTUNITIES, POPULARITY, CLOSING_DATE
+				"criteria":  "NEWEST_OPPORTUNITIES",
 				"direction": "DESC",
 			},
-			"subscriptionTierEpicVariation": "THIRD_VARIATION",
-			"keywords":                      "",
-			"experiments": map[string]interface{}{
-				"bidKeyword": map[string]interface{}{
-					"enabled": false,
-				},
-				"sortByBidPopularityKeyword": "SECOND_VARIATION",
-			},
+			"defaultBid":                  0,
 			"selectedStartDateRangeFacet": nil,
-			"selectedLocationFacets": []map[string]interface{}{
-				{
-					"id":          "9692", // 9692 = Australia
-					"childFacets": []interface{}{},
-				},
+			"experiments": map[string]interface{}{
+				"sortByBidPopularityKeyword": "FIFTH_VARIATION",
+				"prod2432":                  false,
 			},
-			"selectedStudyFieldFacets": []map[string]interface{}{
-				{
-					"id": field, // 502 = IT & Computer Science, 532 is Eng, 677 is math or smt
-				},
+			"locationFilter": map[string]interface{}{
+				"location": "Australia",
 			},
-			"selectedWorkRightsType": []map[string]interface{}{
-				{"id": "29059"}, // 29059 = Australian Citizen
-				{"id": "29060"}, // 29060 = Australian Permanent Resident
-				{"id": "29061"}, // 29061 = International Student/Graduate Visa
-				{"id": "29062"}, // 29062 = Australian Work Visa (All Other)
-				{"id": "29063"}, // 29063 = Visa Sponsorship Included
+			"unitOfDistance":  "KM",
+			"workRightLocation": "29058", // Australia (all work rights)
+			"selectedOpportunityTypeFacets": []map[string]interface{}{
+				{"id": "1", "childFacets": []interface{}{}}, // Graduate Job or Program
+				{"id": "2", "childFacets": []interface{}{}}, // Internship, Clerkship or Placement
+				{"id": "9", "childFacets": []interface{}{}}, // Part-Time Student Job
 			},
+			"studyFieldsFilter": field, // 502 = IT & CS, 532 = Engineering, 677 = Maths
 		},
 	}
 }
 
-func GetGraphQlQuery() string {
-	return `query OpportunitiesSearch($parameters: OpportunitiesSearchInput!) {
-  opportunitiesSearch(parameters: $parameters) {
-    opportunities {
-      id
-      title
-      applyByUrl
-			detailPageURL
-      overview {
-        fullText
-      }
-      opportunityTypes {
-        label
-      }
-			applicationsOpenDate
-      applicationsCloseDate
-      locationDescription
-      studyFields{
-        label
-      }
-      physicalLocations{
-        label
-        children{
-          label
-        }
-      }
-      parentEmployer{
-        title
-				detailPageURL
-				logo{
-					thumbnail{
-						url
-					}
-				}
-      }
-      workingRights{
-        children{
-          label
-        }
-      }
-      }
-    }
-  }`
-}

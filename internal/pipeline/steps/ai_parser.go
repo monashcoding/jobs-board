@@ -26,7 +26,7 @@ type AIParserStep struct {
 }
 
 func NewAiParserStep() *AIParserStep {
-	maxConcurrent := 20 // Lower concurrency for CPU Ollama
+	maxConcurrent := 8
 	return &AIParserStep{
 		maxConcurrent: maxConcurrent,
 		semaphore:     make(chan struct{}, maxConcurrent),
@@ -125,6 +125,11 @@ type ChatResponse struct {
 }
 
 func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.Listing) (models.Listing, error) {
+	if listing.Description == nil || strings.TrimSpace(*listing.Description) == "" {
+		atomic.AddInt32(&s.completedJobs, 1)
+		return listing, nil
+	}
+
 	chatRequest := ChatRequest{
 		Model:  "gpt-4o-mini",
 		Stream: false,
@@ -282,9 +287,24 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return chatResponse, err
+	var resp *http.Response
+	for attempt := 1; attempt <= 3; attempt++ {
+		r, err := client.Do(req.Clone(ctx))
+		if err != nil {
+			return chatResponse, err
+		}
+		if r.StatusCode == http.StatusTooManyRequests {
+			r.Body.Close()
+			wait := time.Duration(attempt) * 2 * time.Second
+			utils.Warn("Rate limit hit for %s, retrying in %s (attempt %d/3)", operationType, wait, attempt)
+			time.Sleep(wait)
+			continue
+		}
+		resp = r
+		break
+	}
+	if resp == nil {
+		return chatResponse, fmt.Errorf("rate limit exceeded after 3 retries for %s", operationType)
 	}
 	defer resp.Body.Close()
 

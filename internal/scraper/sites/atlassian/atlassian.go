@@ -172,7 +172,7 @@ func (s *AtlassianScraper) convertToListing(job JobListing) (models.Listing, err
 
 	// Set company details
 	companyWebsite := s.URL()
-	logo := "https://logo.clearbit.com/atlassian.com"
+	logo := "https://wac-cdn.atlassian.com/misc-assets/adg4-nav/AtlassianHeaderLogo.svg"
 
 	listing := models.Listing{
 		Title:       job.Title,

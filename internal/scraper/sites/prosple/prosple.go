@@ -63,10 +63,9 @@ func (s *ProspleScraper) PerformGraphQLScrape(offset int, pageSize int, field st
 	prospleApiUrl := "https://prosple-gw.global.ssl.fastly.net/internal"
 	var listings []models.Listing
 
-	query := GetGraphQlQuery()
 	variables := GetGraphQlVariables(offset, pageSize, field)
 
-	response, err := SendGraphQLQuery(prospleApiUrl, query, variables, s.unblocker)
+	response, err := SendGraphQLQuery(prospleApiUrl, variables, s.unblocker)
 
 	if err != nil {
 		return nil, fmt.Errorf("GraphQL query failed: %v", err)
