@@ -292,10 +292,14 @@ func AddSponsoredCompanies(listing models.Listing) (models.Listing, error) {
 		"Atlassian",
 		"IMC",
 		"Citadel Securities",
-		"Macquarie Group",
 		"Optiver",
 		"Jane Street",
-		"Susquehanna",
+		"Susquehanna International Group",
+		"Canva",
+		"Lyra Technologies",
+		"Vivcourt",
+		"January Capital",
+		"Flow Traders",
 	}
 
 	// If the company name is in the list of sponsored companies, set the listing as sponsored
