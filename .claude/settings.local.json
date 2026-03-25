@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx playwright:*)",
+      "Bash(node -e \":*)",
+      "Read(//private/tmp/**)",
+      "Bash(npm install:*)",
+      "Bash(curl -s -X POST 'https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobBoardWithTeams' -H 'Content-Type: application/json' -d '{\"\"\"\"operationName\"\"\"\":\"\"\"\"ApiJobBoardWithTeams\"\"\"\",\"\"\"\"variables\"\"\"\":{\"\"\"\"organizationHostedJobsPageName\"\"\"\":\"\"\"\"airwallex\"\"\"\"},\"\"\"\"query\"\"\"\":\"\"\"\"query ApiJobBoardWithTeams\\($organizationHostedJobsPageName: String!\\) {\\\\n  jobBoard: jobBoardWithTeams\\(\\\\n    organizationHostedJobsPageName: $organizationHostedJobsPageName\\\\n  \\) {\\\\n    jobPostings {\\\\n      id\\\\n      title\\\\n      teamId\\\\n      locationId\\\\n      locationName\\\\n      workplaceType\\\\n      employmentType\\\\n      secondaryLocations {\\\\n        locationId\\\\n        locationName\\\\n        __typename\\\\n      }\\\\n      compensationTierSummary\\\\n      __typename\\\\n    }\\\\n    __typename\\\\n  }\\\\n}\"\"\"\"}')",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); postings=data[''''data''''][''''jobBoard''''][''''jobPostings'''']; print\\(f''''Total: {len\\(postings\\)}''''\\); aus=[p for p in postings if p.get\\(''''locationId''''\\)==''''0de88ee6-ccd2-491c-941f-d5536e0e3205'''' or any\\(s.get\\(''''locationId''''\\)==''''0de88ee6-ccd2-491c-941f-d5536e0e3205'''' for s in p.get\\(''''secondaryLocations'''',[]\\)\\)]; print\\(f''''AU jobs: {len\\(aus\\)}''''\\); [print\\(json.dumps\\(p, indent=2\\)\\) for p in aus[:3]]\")",
+      "Bash(go build:*)"
+    ]
+  }
+}

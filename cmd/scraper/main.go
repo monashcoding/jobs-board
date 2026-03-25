@@ -14,6 +14,7 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline"
 	"github.com/monashcoding/mploy-golang-core/internal/pipeline/steps"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper"
+	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/airwallex"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/atlassian"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/gradcon"
 	"github.com/monashcoding/mploy-golang-core/internal/scraper/sites/janestreet"
@@ -119,6 +120,7 @@ func initializeScrapers() []scraper.Scraper {
 		linkedin.NewLinkedInScraper(),
 		janestreet.NewJaneStreetScraper(),
 		atlassian.NewAtlassianScraper(),
+		airwallex.NewAirwallexScraper(),
 	}
 
 	var validScrapers []scraper.Scraper

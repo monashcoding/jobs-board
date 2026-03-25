@@ -79,6 +79,7 @@ const (
 	LINKEDIN       Source = "LINKEDIN"
 	ATLASSIAN      Source = "ATLASSIAN"
 	JANESTREET     Source = "JANESTREET"
+	AIRWALLEX      Source = "AIRWALLEX"
 	MULTIPLE       Source = "MULTIPLE"
 )
 
