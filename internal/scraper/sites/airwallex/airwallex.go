@@ -98,8 +98,8 @@ func NewAirwallexScraper() *AirwallexScraper {
 	return &AirwallexScraper{unblocker: unblockerService}
 }
 
-func (s *AirwallexScraper) Name() string         { return "Airwallex" }
-func (s *AirwallexScraper) URL() string          { return "https://www.airwallex.com" }
+func (s *AirwallexScraper) Name() string          { return "Airwallex" }
+func (s *AirwallexScraper) URL() string           { return "https://www.airwallex.com" }
 func (s *AirwallexScraper) SetJobLimit(limit int) { s.jobLimit = limit }
 
 func (s *AirwallexScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
@@ -179,7 +179,7 @@ func (s *AirwallexScraper) fetchJobDetails(ctx context.Context, jobID string) (*
 		"operationName": "ApiJobPosting",
 		"variables": map[string]string{
 			"organizationHostedJobsPageName": orgSlug,
-			"jobPostingId":                  jobID,
+			"jobPostingId":                   jobID,
 		},
 		"query": query,
 	}

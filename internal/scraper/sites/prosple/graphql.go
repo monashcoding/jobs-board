@@ -193,12 +193,12 @@ func GetGraphQlVariables(offset int, limit int, field string) map[string]interfa
 			"selectedStartDateRangeFacet": nil,
 			"experiments": map[string]interface{}{
 				"sortByBidPopularityKeyword": "FIFTH_VARIATION",
-				"prod2432":                  false,
+				"prod2432":                   false,
 			},
 			"locationFilter": map[string]interface{}{
 				"location": "Australia",
 			},
-			"unitOfDistance":  "KM",
+			"unitOfDistance":    "KM",
 			"workRightLocation": "29058", // Australia (all work rights)
 			"selectedOpportunityTypeFacets": []map[string]interface{}{
 				{"id": "1", "childFacets": []interface{}{}}, // Graduate Job or Program
@@ -209,4 +209,3 @@ func GetGraphQlVariables(offset int, limit int, field string) map[string]interfa
 		},
 	}
 }
-

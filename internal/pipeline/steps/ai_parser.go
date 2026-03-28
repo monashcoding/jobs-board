@@ -26,7 +26,7 @@ type AIParserStep struct {
 }
 
 func NewAiParserStep() *AIParserStep {
-	maxConcurrent := 8
+	maxConcurrent := 6
 	return &AIParserStep{
 		maxConcurrent: maxConcurrent,
 		semaphore:     make(chan struct{}, maxConcurrent),
@@ -316,6 +316,10 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return chatResponse, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return chatResponse, fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	err = json.Unmarshal(body, &chatResponse)
