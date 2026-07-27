@@ -69,9 +69,14 @@ func generateListingFingerprint(listing models.Listing) string {
 		normalizeString(listing.Company.Name),
 	}
 
-	// Add application URL if it exists
+	// Add application URL if it exists.
+	// NOTE: Known tracking/search params are stripped before hashing so the same listing
+	// isn't treated as a new document when the scraper returns the URL with different
+	// non-identifying params (e.g. q=, hl=, utm_*). Essential ATS job-identity params
+	// (jobId=, vacancyid=, Areq=, etc.) are intentionally preserved.
+	// See https://github.com/monashcoding/mploy-golang-core/pull/97
 	if listing.ApplicationURL != nil {
-		components = append(components, normalizeString(*listing.ApplicationURL))
+		components = append(components, normalizeString(stripTrackingParams(*listing.ApplicationURL)))
 	}
 
 	// Add sorted locations

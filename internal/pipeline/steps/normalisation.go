@@ -3,6 +3,7 @@ package steps
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -159,6 +160,8 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 			utils.Warn("Failed to hardcode industry field: %v", err)
 		}
 
+		listing = StripApplicationURLParams(listing)
+
 		// Append the normalised listing to the result slice
 		normalised = append(normalised, listing)
 	}
@@ -310,6 +313,54 @@ func AddSponsoredCompanies(listing models.Listing) (models.Listing, error) {
 		}
 	}
 	return listing, nil
+}
+
+// trackingParams is an allowlist of query param names that are safe to strip because
+// they carry no job identity — they are search terms, locale hints, or tracking tokens.
+// See https://github.com/monashcoding/mploy-golang-core/pull/97
+//
+// NOTE: Do NOT strip params blindly. Several ATS platforms (Taleo, BrassRing,
+// SAP SuccessFactors, WA Jobs Portal, PwC) encode the job ID entirely in a query
+// param (e.g. vacancyid=, jobId=, Areq=, AdvertID=). Stripping those collapses
+// all jobs at a company to the same URL. Only params confirmed to be non-identifying
+// belong here.
+var trackingParams = map[string]bool{
+	"q":      true, // search query (e.g. Google Careers)
+	"hl":     true, // locale/language hint
+	"e":      true, // Google event tracking
+	"src":    true, // referral source
+	"mode":   true, // Atlassian ?mode=apply
+	"iis":    true, // LinkedIn impression tracking
+	"spread": true, // LinkedIn spread tracking
+	"source": true, // generic source tracking
+	"codes":  true, // referral tracking code (SIG/iCIMS redirect URLs)
+	"lang":   true, // locale/language hint
+}
+
+// stripTrackingParams removes known tracking/search query params from a URL,
+// leaving any params that may carry job identity untouched.
+func stripTrackingParams(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	q := parsed.Query()
+	for key := range q {
+		if trackingParams[key] || strings.HasPrefix(key, "utm_") {
+			q.Del(key)
+		}
+	}
+	parsed.RawQuery = q.Encode()
+	return parsed.String()
+}
+
+func StripApplicationURLParams(listing models.Listing) models.Listing {
+	if listing.ApplicationURL == nil {
+		return listing
+	}
+	stripped := stripTrackingParams(*listing.ApplicationURL)
+	listing.ApplicationURL = &stripped
+	return listing
 }
 
 func HardcodeIndustryField(listing models.Listing) (models.Listing, error) {
