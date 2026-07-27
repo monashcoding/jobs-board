@@ -21,8 +21,10 @@ func TestNormalisationRuns(t *testing.T) {
 }
 
 func TestNormalisationTrimsTitle(t *testing.T) {
+	url := "https://example.com"
 	emptyNameListing := models.Listing{
-		Title: "Trim    ",
+		Title:          "Trim me    ",
+		ApplicationURL: &url,
 	}
 
 	norm := steps.NewNormalisationStep()
@@ -34,8 +36,8 @@ func TestNormalisationTrimsTitle(t *testing.T) {
 
 	testListing := res[0]
 
-	if testListing.Title != "Trim" {
-		t.Fatalf("Expected 'Trim', got '%s'", testListing.Title)
+	if testListing.Title != "Trim me" {
+		t.Fatalf("Expected 'Trim me', got '%s'", testListing.Title)
 	}
 }
 
@@ -61,17 +63,17 @@ func TestCanAssignIndustryField(t *testing.T) {
 	listing := models.Listing{
 		Title: "Software Engineer",
 		Company: models.Company{
-			Name: "Tesla Australia",
+			Name: "Amazon",
 		},
 	}
 
-	industry, err := steps.AssignIndustryByCompany(listing)
+	result, err := steps.HardcodeIndustryField(listing)
 
 	if err != nil {
-		t.Fatalf("AssignIndustryByCompany failed on test listing")
+		t.Fatalf("HardcodeIndustryField failed on test listing")
 	}
 
-	if industry.IndustryField != models.TECH {
-		t.Fatalf("Expected '%s', got '%s'", models.BIG_TECH, listing.IndustryField)
+	if result.IndustryField != models.BIG_TECH {
+		t.Fatalf("Expected '%s', got '%s'", models.BIG_TECH, result.IndustryField)
 	}
 }
