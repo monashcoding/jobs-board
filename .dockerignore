@@ -1,0 +1,10 @@
+.git
+.github
+.env
+.idea
+.vscode
+**/.DS_Store
+debug
+repository
+testing
+README.md

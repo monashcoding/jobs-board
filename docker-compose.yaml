@@ -1,12 +1,17 @@
-version: '3.8'
+# Local development only. Dokploy builds the Dockerfile directly and injects
+# environment variables itself, so it does not use this file.
+#
+#   docker compose build
+#   docker compose run --rm scraper /app/scraper
 
 services:
-  go-script:
+  scraper:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: mploy-go-scraper
+    env_file:
+      - .env
     volumes:
-      - ./.env:/app/.env
-      - ./cron.txt:/app/cron.txt
-    restart: unless-stopped
+      # Inspect the pipeline's JSON output from the host
+      - ./debug:/app/debug

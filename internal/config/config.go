@@ -48,9 +48,11 @@ var EnvironmentVars = []EnvVar{
 
 // ValidateEnvironment checks required environment variables and sets defaults
 func ValidateEnvironment() []string {
-	// Load environment variables
+	// Load environment variables from .env if present. In containerised
+	// deployments (Dokploy, CI) the variables are injected into the process
+	// environment directly, so a missing .env is not an error.
 	if err := godotenv.Load(); err != nil {
-		utils.Fatal(".env file not found: %v\n.", err)
+		utils.Warn("No .env file loaded (%v), falling back to the process environment.", err)
 	}
 
 	var missing []string
