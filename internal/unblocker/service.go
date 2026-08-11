@@ -97,6 +97,7 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 			} else {
 				utils.Error("Error fetching %s - %v", req.URL.Path, err)
 			}
+			s.rotateProxy(ctx)
 			continue
 		}
 
@@ -117,6 +118,7 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 			}
 
 			resp.Body.Close()
+			s.rotateProxy(ctx)
 			continue
 		}
 
@@ -125,6 +127,20 @@ func (s *service) MakeRequest(ctx context.Context, req *http.Request) (*http.Res
 	}
 
 	return nil, fmt.Errorf("max retries exceeded: %v", lastError)
+}
+
+// rotateProxy discards the current Bright Data session so the next attempt
+// goes out through a different exit IP. Without this, every retry reuses the
+// IP that just got blocked and the backoff is spent waiting for a result that
+// cannot change.
+func (s *service) rotateProxy(ctx context.Context) {
+	if s.ipManager == nil {
+		return
+	}
+
+	if err := s.ipManager.RotateProxy(ctx, ""); err != nil {
+		utils.Warn("Failed to rotate proxy session: %v", err)
+	}
 }
 
 // executeRequest handles the actual execution of the request with all middleware

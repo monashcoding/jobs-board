@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/monashcoding/mploy-golang-core/internal/unblocker"
@@ -36,14 +35,14 @@ func SendCompanyAPIRequest(companyId string, unblocker unblocker.Service) (*Desc
 
 	resp, err := unblocker.MakeRequest(context.Background(), req)
 	if err != nil {
-		log.Fatal("Error making request:", err)
+		return nil, fmt.Errorf("failed to fetch company %s: %w", companyId, err)
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		utils.Fatal("Error reading response: %v", err)
+		return nil, fmt.Errorf("failed to read company %s response: %w", companyId, err)
 	}
 
 	var result DescriptionAPIResponse

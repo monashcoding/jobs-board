@@ -23,13 +23,19 @@ func (s *GradconScraper) MergeDetailedDescriptionsWithListings(listings []models
 	utils.Log("Getting detailed descriptions for %d companies", len(uniqueCompanyIds))
 
 	counter := 0
+	skipped := 0
 	totalCompanies := len(uniqueCompanyIds)
 
 	for companyId := range uniqueCompanyIds {
 		utils.Log("Processing company API request %d/%d (ID: %s)", counter, totalCompanies, companyId)
 		companyApiReponse, err := SendCompanyAPIRequest(companyId, s.unblocker)
 		if err != nil {
+			// GradConnection returns intermittent 500s for individual companies.
+			// Skip this one rather than losing the whole scrape.
 			utils.Warn("error getting company api response: %v", err)
+			skipped++
+			counter++
+			continue
 		}
 
 		gradConnectCompanyListingData = append(gradConnectCompanyListingData, *companyApiReponse...)
@@ -55,6 +61,9 @@ func (s *GradconScraper) MergeDetailedDescriptionsWithListings(listings []models
 	}
 
 	utils.Log("Merged %d detailed descriptions out of %d listings", mergeCount, len(listings))
+	if skipped > 0 {
+		utils.Warn("Skipped %d/%d companies whose detail API failed", skipped, totalCompanies)
+	}
 }
 
 func GradConnectToMPLOY(gradConnect GradConnectData, url string) ([]models.Listing, error) {

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -66,14 +65,14 @@ func SendAPIRequest(url string, limit int, offset int, unblocker unblocker.Servi
 
 	resp, err := unblocker.MakeRequest(context.Background(), req)
 	if err != nil {
-		log.Fatal("Error making request:", err)
+		return nil, fmt.Errorf("failed to fetch listings at offset %d: %w", offset, err)
 	}
 	defer resp.Body.Close()
 
 	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		utils.Fatal("Error reading response: %v", err)
+		return nil, fmt.Errorf("failed to read listings response at offset %d: %w", offset, err)
 	}
 
 	var result APIResponse
