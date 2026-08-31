@@ -71,6 +71,20 @@ const (
 	OTHER_INDUSTRY     IndustryField = "OTHER_INDUSTRY"
 )
 
+// Discipline is the technical discipline of the role itself, as opposed to
+// IndustryField (the employer's sector) or StudyFields (the degrees a listing
+// is open to). Sources tag broad graduate programs with every discipline they
+// accept, so StudyFields cannot tell a software role from a supply chain one.
+type Discipline string
+
+const (
+	SOFTWARE         Discipline = "SOFTWARE"
+	DATA             Discipline = "DATA"
+	CYBER            Discipline = "CYBER"
+	ENGINEERING      Discipline = "ENGINEERING"
+	OTHER_DISCIPLINE Discipline = "OTHER_DISCIPLINE"
+)
+
 type Source string
 
 const (
@@ -99,6 +113,9 @@ type Listing struct {
 	Source         Source             `bson:"source" json:"source"`
 	StudyFields    []string           `bson:"study_fields" json:"study_fields"`
 	IndustryField  IndustryField      `bson:"industry_field" json:"industry_field"`
+	Discipline     Discipline         `bson:"discipline" json:"discipline"`
+	BoardScore     int                `bson:"board_score" json:"board_score"`
+	BoardEligible  bool               `bson:"board_eligible" json:"board_eligible"`
 	WorkingRights  []WorkingRight     `bson:"working_rights" json:"working_rights"`
 	IsSponsored    bool               `bson:"is_sponsored" json:"is_sponsored"`
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`

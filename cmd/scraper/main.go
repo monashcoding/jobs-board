@@ -95,6 +95,10 @@ func RunScraper() {
 
 	utils.Success("Scraping section finished. Starting pipelines...")
 
+	// Surface every location string no city table matched, so the tables can be
+	// grown from real scrape output instead of guesswork.
+	utils.ReportUnmappedLocations()
+
 	// Create the pipeline with active steps
 	processingPipeline := pipeline.NewPipeline(pipelineSteps)
 
@@ -148,6 +152,7 @@ func initializePipelineSteps(uploadStep *steps.MongoDBUploadStep) []pipeline.Ste
 		steps.NewDeduplicationStep(),
 		steps.NewSynchronisationStep(),
 		steps.NewAiParserStep(),
+		steps.NewBoardScoringStep(),
 		uploadStep,
 	}
 

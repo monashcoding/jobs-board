@@ -160,6 +160,76 @@ func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.
 	return listing, nil
 }
 
+var industryMap = map[string]models.IndustryField{
+	"CONSULTING":         models.CONSULTING,
+	"BANKS":              models.BANKS,
+	"BIG_TECH":           models.BIG_TECH,
+	"TECH":               models.TECH,
+	"QUANT_TRADING":      models.QUANT_TRADING,
+	"ENERGY":             models.ENERGY,
+	"GOVERNMENT":         models.GOVERNMENT,
+	"MANUFACTURING":      models.MANUFACTURING,
+	"TELECOMMUNICATIONS": models.TELECOMMUNICATIONS,
+	"OTHER_INDUSTRY":     models.OTHER_INDUSTRY,
+}
+
+var jobTypeMap = map[string]models.JobType{
+	"INTERN":   models.INTERN,
+	"GRADUATE": models.GRADUATE,
+	"OTHER":    models.OTHER,
+}
+
+var disciplineMap = map[string]models.Discipline{
+	"SOFTWARE":         models.SOFTWARE,
+	"DATA":             models.DATA,
+	"CYBER":            models.CYBER,
+	"ENGINEERING":      models.ENGINEERING,
+	"OTHER_DISCIPLINE": models.OTHER_DISCIPLINE,
+}
+
+// ApplyClassification parses an INDUSTRY#JOBTYPE#DISCIPLINE response. Every
+// axis falls back to its OTHER value independently, so a model that garbles one
+// field does not cost us the other two. title is used for logging only.
+func ApplyClassification(content string, title string) (models.IndustryField, models.JobType, models.Discipline) {
+	parts := strings.Split(content, "#")
+
+	industryField := models.OTHER_INDUSTRY
+	jobType := models.OTHER
+	discipline := models.OTHER_DISCIPLINE
+
+	if len(parts) < 2 {
+		utils.Warn("Unexpected format in AI response %q for %q. Falling back to default values.", content, title)
+		return industryField, jobType, discipline
+	}
+
+	if mapped, ok := industryMap[strings.TrimSpace(parts[0])]; ok {
+		industryField = mapped
+	} else {
+		utils.Warn("Unknown industry %q for %q. Defaulting to OTHER_INDUSTRY.", parts[0], title)
+	}
+
+	if mapped, ok := jobTypeMap[strings.TrimSpace(parts[1])]; ok {
+		jobType = mapped
+	} else {
+		utils.Warn("Unknown job type %q for %q. Defaulting to OTHER.", parts[1], title)
+	}
+
+	// Tolerate the older two-part response shape rather than losing the
+	// industry and job type when the model omits the discipline.
+	if len(parts) < 3 {
+		utils.Warn("AI response %q for %q has no discipline. Defaulting to OTHER_DISCIPLINE.", content, title)
+		return industryField, jobType, discipline
+	}
+
+	if mapped, ok := disciplineMap[strings.TrimSpace(parts[2])]; ok {
+		discipline = mapped
+	} else {
+		utils.Warn("Unknown discipline %q for %q. Defaulting to OTHER_DISCIPLINE.", parts[2], title)
+	}
+
+	return industryField, jobType, discipline
+}
+
 func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing models.Listing) (models.Listing, error) {
 	chatRequest := ChatRequest{
 		Model:  "gpt-4o-mini",
@@ -169,7 +239,17 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 			Content string `json:"content"`
 		}{
 			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "Classify the industry field of the listing based on the title and company name. Respond with only one of the following values: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, OTHER_INDUSTRY followed by whether it is an INTERN, GRADUATE or OTHER job type. Output in the form: INDUSTRY#JOBTYPE \n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
+			{Role: "user", Content: "Classify the listing on three axes.\n\n" +
+				"1. INDUSTRY, the employer's sector. One of: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, OTHER_INDUSTRY.\n" +
+				"2. JOBTYPE, one of: INTERN, GRADUATE, OTHER.\n" +
+				"3. DISCIPLINE, the technical discipline of the work itself. One of:\n" +
+				"   SOFTWARE - writing or shipping software: software engineering, web, mobile, embedded, devops, cloud, platform, SRE, QA.\n" +
+				"   DATA - data science, data engineering, analytics, machine learning, AI research.\n" +
+				"   CYBER - cyber security, information security, penetration testing.\n" +
+				"   ENGINEERING - non-software engineering: civil, mechanical, electrical, chemical, mining, aerospace.\n" +
+				"   OTHER_DISCIPLINE - anything else, including consulting, finance, sales, marketing, HR, legal, supply chain, and general graduate programs with no technical component.\n\n" +
+				"Judge DISCIPLINE by the role, not the employer: a marketing role at a software company is OTHER_DISCIPLINE. If the title is generic (e.g. \"Graduate Program\") use the company and description to decide, and prefer OTHER_DISCIPLINE when the work is not clearly technical.\n\n" +
+				"Output exactly, with no other text, in the form: INDUSTRY#JOBTYPE#DISCIPLINE\n\nTitle: " + listing.Title + "\nCompany: " + listing.Company.Name},
 		},
 	}
 
@@ -179,45 +259,17 @@ func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing mode
 	}
 
 	if len(chatResponse.Choices) > 0 {
-		splitResponse := strings.Split(chatResponse.Choices[0].Message.Content, "#")
-
-		industryField := "OTHER_INDUSTRY"
-		jobType := "OTHER"
-
-		if len(splitResponse) >= 2 {
-			industryField = strings.TrimSpace(splitResponse[0])
-			jobType = strings.TrimSpace(splitResponse[1])
-		} else {
-			utils.Warn("Unexpected format in AI response: %q. Falling back to default values.", chatResponse)
-		}
-
-		industryMap := map[string]models.IndustryField{
-			"CONSULTING":         models.CONSULTING,
-			"BANKS":              models.BANKS,
-			"BIG_TECH":           models.BIG_TECH,
-			"TECH":               models.TECH,
-			"QUANT_TRADING":      models.QUANT_TRADING,
-			"ENERGY":             models.ENERGY,
-			"GOVERNMENT":         models.GOVERNMENT,
-			"MANUFACTURING":      models.MANUFACTURING,
-			"TELECOMMUNICATIONS": models.TELECOMMUNICATIONS,
-			"OTHER_INDUSTRY":     models.OTHER_INDUSTRY,
-		}
+		industryField, jobType, discipline := ApplyClassification(chatResponse.Choices[0].Message.Content, listing.Title)
 
 		if listing.IndustryField == "" {
-			listing.IndustryField = industryMap[industryField]
-		}
-
-		jobTypeMap := map[string]models.JobType{
-			"INTERN":   models.INTERN,
-			"GRADUATE": models.GRADUATE,
-			"OTHER":    models.OTHER,
+			listing.IndustryField = industryField
 		}
 
 		if listing.Type == nil {
-			jobTypeValue := jobTypeMap[jobType]
-			listing.Type = &jobTypeValue
+			listing.Type = &jobType
 		}
+
+		listing.Discipline = discipline
 	} else {
 		utils.Error("No response received from Chat.")
 	}
