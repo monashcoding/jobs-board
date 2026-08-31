@@ -33,3 +33,6 @@ go.work.sum
 debug
 repoisitory
 /repository/
+
+# Document dumps written by cmd/migrate-fingerprints before a destructive delete
+superseded-backup-*.json

@@ -173,6 +173,9 @@ func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]model
 				visitedStates[state] = true
 			}
 		} else {
+			// Record the miss so the city tables above can be grown from real
+			// scrape output instead of guesswork.
+			utils.RecordUnmappedLocation("GradConnection", location)
 			locations = append(locations, models.OTHERS)
 		}
 	}
@@ -190,7 +193,9 @@ func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]model
 			}
 		}
 	} else if len(locations) < 1 {
-		locations = append(locations, models.AUSTRALIA)
+		// A campaign with no locations at all tells us nothing about where the
+		// job is, so mark it unknown rather than claiming it is Australian.
+		locations = append(locations, models.OTHERS)
 	}
 
 	// Use sets to ensure no duplicates
@@ -204,7 +209,7 @@ func GradConLocationsToMPLOYLocationTypes(campaign GradConnectCampaign) ([]model
 		locations = append(locations, location)
 	}
 
-	return locations, nil
+	return utils.SanitiseAustralianLocations(locations, campaign.Title, campaign.Locations), nil
 }
 
 func GradConStudyFieldsToMPLOYStudyFields(campaign GradConnectCampaign) ([]string, error) {

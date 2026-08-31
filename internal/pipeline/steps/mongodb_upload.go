@@ -49,13 +49,44 @@ func (s *MongoDBUploadStep) AddLog(log string) {
 	s.logs = append(s.logs, cleanLog)
 }
 
-// ListingFingerprint generates a unique identifier for a listing based on its content
-func generateListingFingerprint(listing models.Listing) string {
-	// Normalize strings by trimming spaces and converting to lowercase
-	normalizeString := func(s string) string {
-		return strings.ToLower(strings.TrimSpace(s))
-	}
+// fingerprintTitlePattern matches everything we drop from a title before
+// hashing. Digits survive, so the 2026 and 2027 intakes of the same program stay
+// distinct listings.
+var fingerprintTitlePattern = regexp.MustCompile(`[^a-z0-9]+`)
 
+// normaliseFingerprintTitle lowercases a title and reduces every run of
+// punctuation or whitespace to a single space, so cosmetic rewording of the same
+// job ("Cyber Graduate Program | 2027" vs "Cyber Graduate Program - 2027") keeps
+// one identity.
+func normaliseFingerprintTitle(title string) string {
+	lowered := strings.ToLower(strings.TrimSpace(title))
+	return strings.TrimSpace(fingerprintTitlePattern.ReplaceAllString(lowered, " "))
+}
+
+// GenerateListingFingerprint returns the stable identity of a listing. It is the
+// upsert key for the active_jobs collection, so two scrapes of the same job must
+// produce the same value or a duplicate document is inserted -- which the Discord
+// bot mirrors as a duplicate forum thread.
+//
+// The identity is title + company + locations + SOURCE url. Two url fields are
+// easy to confuse here, and the distinction is the whole point:
+//
+//   - application_url points at a third-party ATS and is NOT part of the identity.
+//     Sources rewrite it for reasons unrelated to the job (Deloitte switched to a
+//     bit.ly shortlink, Thales migrated from Workday to their own careers site),
+//     and each rewrite used to mint a duplicate document.
+//   - source_urls[0] is our own stable handle on the listing at the site we
+//     scraped it from, and it distinguishes genuinely separate postings that share
+//     a title. Jane Street lists several roles called "Software Engineer" that
+//     differ only by position id; without this they collapse into one.
+//
+// Locations are kept: dropping them was measured to merge distinct postings that
+// differ only by city.
+//
+// Changing this function re-keys the entire collection. Every existing document
+// must be migrated in place (cmd/migrate-fingerprints) BEFORE the new scraper
+// runs, or every listing is re-inserted as new.
+func GenerateListingFingerprint(listing models.Listing) string {
 	// Sort locations to ensure consistent order
 	locations := make([]string, len(listing.Locations))
 	for i, loc := range listing.Locations {
@@ -63,26 +94,20 @@ func generateListingFingerprint(listing models.Listing) string {
 	}
 	sort.Strings(locations)
 
-	// Create components array with required fields
+	// Scrapers set a single source URL per listing; nothing downstream merges
+	// them, so the first entry is a stable choice.
+	sourceURL := ""
+	if len(listing.SourceURLs) > 0 {
+		sourceURL = strings.TrimRight(strings.ToLower(strings.TrimSpace(listing.SourceURLs[0])), "/")
+	}
+
 	components := []string{
-		normalizeString(listing.Title),
-		normalizeString(listing.Company.Name),
+		normaliseFingerprintTitle(listing.Title),
+		strings.ToLower(strings.TrimSpace(listing.Company.Name)),
+		strings.Join(locations, "|"),
+		sourceURL,
 	}
 
-	// Add application URL if it exists.
-	// NOTE: Known tracking/search params are stripped before hashing so the same listing
-	// isn't treated as a new document when the scraper returns the URL with different
-	// non-identifying params (e.g. q=, hl=, utm_*). Essential ATS job-identity params
-	// (jobId=, vacancyid=, Areq=, etc.) are intentionally preserved.
-	// See https://github.com/monashcoding/mploy-golang-core/pull/97
-	if listing.ApplicationURL != nil {
-		components = append(components, normalizeString(stripTrackingParams(*listing.ApplicationURL)))
-	}
-
-	// Add sorted locations
-	components = append(components, strings.Join(locations, "|"))
-
-	// Create SHA-256 hash of the combined string
 	hasher := sha256.New()
 	hasher.Write([]byte(strings.Join(components, ":::")))
 	return hex.EncodeToString(hasher.Sum(nil))
@@ -122,13 +147,13 @@ func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listi
 
 	now := time.Now()
 
-	// Mark as outdated only the jobs this run did NOT see. Blanket-marking every
-	// document and letting the upserts flip it back wrote to the whole
-	// collection twice per run, and every one of those writes is a change-stream
-	// event that downstream consumers have to process.
+	// Mark as outdated only the jobs that this run did NOT see. Blanket-marking
+	// every document and letting the upserts flip it back produced two or three
+	// writes per document per run across the whole collection, and every one of
+	// those is a change-stream event the Discord bot has to process.
 	seenFingerprints := make([]string, len(listings))
 	for i, listing := range listings {
-		seenFingerprints[i] = generateListingFingerprint(listing)
+		seenFingerprints[i] = GenerateListingFingerprint(listing)
 	}
 
 	_, err := activeColl.UpdateMany(ctx,
@@ -150,7 +175,7 @@ func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listi
 		operations := make([]mongo.WriteModel, len(batch))
 		for j, listing := range batch {
 			// Generate fingerprint for matching
-			fingerprint := generateListingFingerprint(listing)
+			fingerprint := GenerateListingFingerprint(listing)
 
 			// Prepare the update operation
 			filter := bson.M{"fingerprint": fingerprint}

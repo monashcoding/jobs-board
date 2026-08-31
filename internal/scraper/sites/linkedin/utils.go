@@ -1,9 +1,11 @@
 package linkedin
 
 import (
-	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"net/url"
 	"strings"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 func buildSearchURL(baseURL string, params map[string]string) string {
@@ -48,8 +50,17 @@ func parseLocations(location string) []models.LocationType {
 		locations = append(locations, models.TAS)
 	} else if strings.Contains(location, "Darwin") {
 		locations = append(locations, models.NT)
-	} else {
+	} else if strings.Contains(location, "Australia") {
+		// A place we have no city mapping for, but LinkedIn still says it is in
+		// Australia (e.g. "Scoresby, Victoria, Australia").
+		utils.RecordUnmappedLocation("LinkedIn", location)
 		locations = append(locations, models.AUSTRALIA)
+	} else {
+		// Nothing identifies this as Australian. Defaulting to AUSTRALIA here
+		// used to stamp overseas jobs as Australian, which is how they ended up
+		// under the Australia filter.
+		utils.RecordUnmappedLocation("LinkedIn", location)
+		locations = append(locations, models.OTHERS)
 	}
 
 	return locations

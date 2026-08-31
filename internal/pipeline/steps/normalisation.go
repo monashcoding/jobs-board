@@ -273,7 +273,12 @@ func StandardiseCompanyName(listing models.Listing) (models.Listing, error) {
 	// 1. Trim the company name
 	standardisedName := strings.TrimSpace(listing.Company.Name)
 
-	// 2. Match with known ambiguous company names
+	// 2. Drop trailing country/legal suffixes so "Thales Australia" and "Thales"
+	// are the same employer. Company name feeds the fingerprint, so leaving them
+	// split mints a duplicate document (and a duplicate Discord thread).
+	standardisedName = utils.StripCompanySuffix(standardisedName)
+
+	// 3. Match with known ambiguous company names
 	for _, company := range utils.GetCompanyMap() {
 		for _, match := range company.Matches {
 			if strings.EqualFold(standardisedName, match) {

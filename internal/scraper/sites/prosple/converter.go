@@ -80,9 +80,12 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 	// Initialize a slice to hold the mapped locations
 	locations := []models.LocationType{}
 	uniqueLocations := map[models.LocationType]struct{}{} // map to track unique locations
+	rawLocations := []string{}                            // every label we saw, for the overseas check
 
 	// Iterate over the physical locations and their children
 	for _, location := range opportunity.PhysicalLocations {
+		rawLocations = append(rawLocations, location.Label)
+
 		// Check if the location is in the map
 		if mappedLocation, exists := locationMap[location.Label]; exists {
 			// If not already added, append to locations
@@ -92,6 +95,7 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 			}
 		} else {
 			// If the location isn't in the map, append "OTHERS" (only once)
+			utils.RecordUnmappedLocation("Prosple", location.Label)
 			if _, exists := uniqueLocations[models.OTHERS]; !exists {
 				locations = append(locations, models.OTHERS)
 				uniqueLocations[models.OTHERS] = struct{}{} // Mark as added
@@ -100,6 +104,8 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 
 		// Handle child locations
 		for _, childLocation := range location.Children {
+			rawLocations = append(rawLocations, childLocation.Label)
+
 			// Check if the child location is in the map
 			if mappedLocation, exists := locationMap[childLocation.Label]; exists {
 				// If not already added, append to locations
@@ -109,6 +115,7 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 				}
 			} else {
 				// If the child location isn't in the map, append "OTHERS" (only once)
+				utils.RecordUnmappedLocation("Prosple", childLocation.Label)
 				if _, exists := uniqueLocations[models.OTHERS]; !exists {
 					locations = append(locations, models.OTHERS)
 					uniqueLocations[models.OTHERS] = struct{}{} // Mark as added
@@ -130,10 +137,12 @@ func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.Loc
 			}
 		}
 	} else if len(locations) < 1 {
-		locations = append(locations, models.AUSTRALIA)
+		// No locations at all tells us nothing about where the job is, so mark
+		// it unknown rather than claiming it is Australian.
+		locations = append(locations, models.OTHERS)
 	}
 
-	return locations, nil
+	return utils.SanitiseAustralianLocations(locations, opportunity.Title, rawLocations), nil
 }
 
 func ProspleStudyFieldsToMPLOYStudyFields(opportunity Opportunity) ([]string, error) {
