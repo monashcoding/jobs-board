@@ -73,7 +73,7 @@ func RunScraper() {
 	scrapers := initializeScrapers()
 
 	// Initialize pipeline steps
-	pipelineSteps := initializePipelineSteps(mvpUpload)
+	pipelineSteps := initializePipelineSteps(mongodb, mvpUpload)
 
 	// Collect all listings from active scrapers
 	var allListings []models.Listing
@@ -144,14 +144,14 @@ func initializeScrapers() []scraper.Scraper {
 }
 
 // initializePipelineSteps creates all available pipeline steps
-func initializePipelineSteps(uploadStep *steps.MongoDBUploadStep) []pipeline.Step {
+func initializePipelineSteps(mongodb *database.MongoDB, uploadStep *steps.MongoDBUploadStep) []pipeline.Step {
 	// Create all pipeline steps
 	allSteps := []pipeline.Step{
 		steps.NewWriteJSONStep(),
 		steps.NewNormalisationStep(),
 		steps.NewDeduplicationStep(),
 		steps.NewSynchronisationStep(),
-		steps.NewAiParserStep(),
+		steps.NewAiParserStepWithCache(mongodb),
 		steps.NewBoardScoringStep(),
 		uploadStep,
 	}

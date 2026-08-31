@@ -113,6 +113,69 @@ func GenerateListingFingerprint(listing models.Listing) string {
 	return hex.EncodeToString(hasher.Sum(nil))
 }
 
+// buildListingSet assembles the $set document for one listing.
+//
+// Fields an enrichment step may legitimately have failed to produce are written
+// only when this run actually produced them, so a partial run leaves the stored
+// value alone instead of nulling it out.
+func buildListingSet(listing models.Listing, fingerprint string, version string, now time.Time) bson.M {
+	set := bson.M{
+		"title":           listing.Title,
+		"description":     listing.Description,
+		"company":         listing.Company,
+		"application_url": listing.ApplicationURL,
+		"wfh_status":      listing.WFHStatus,
+		"source_urls":     listing.SourceURLs,
+		"close_date":      listing.CloseDate,
+		"locations":       listing.Locations,
+		"study_fields":    listing.StudyFields,
+		"working_rights":  listing.WorkingRights,
+		"source":          listing.Source,
+		"is_sponsored":    listing.IsSponsored,
+		"version":         version,
+		"updated_at":      now,
+		"outdated":        false,
+		"days_lived":      0,
+		"fingerprint":     fingerprint,
+	}
+
+	// Only write the enrichment fields when this run actually produced
+	// them. RUN_PIPELINE_STEPS is an allowlist, so skipping AI_Parser or
+	// BoardScoring leaves them at their zero values -- writing those
+	// unconditionally would erase good data across the whole collection
+	// on the next partial run.
+	//
+	// The same applies per listing, not just per run: when an OpenAI
+	// call fails the listing keeps its zero value while its neighbours
+	// are enriched normally, so an unguarded write nulls out a good
+	// stored value. An exhausted quota returns 429 for every remaining
+	// call in the run, which turned a billing problem into silent data
+	// loss across most of the collection.
+	if listing.OneLinerDesc != nil && *listing.OneLinerDesc != "" {
+		set["one_liner"] = listing.OneLinerDesc
+	}
+
+	if listing.Type != nil {
+		set["type"] = listing.Type
+	}
+
+	if listing.IndustryField != "" {
+		set["industry_field"] = listing.IndustryField
+	}
+
+	if listing.Discipline != "" {
+		set["discipline"] = listing.Discipline
+		set["board_score"] = listing.BoardScore
+		set["board_eligible"] = listing.BoardEligible
+	}
+
+	if listing.OpenDate != nil {
+		set["open_date"] = listing.OpenDate
+	}
+
+	return set
+}
+
 func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
 	if len(listings) == 0 {
 		return listings, nil
@@ -180,43 +243,7 @@ func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listi
 			// Prepare the update operation
 			filter := bson.M{"fingerprint": fingerprint}
 
-			set := bson.M{
-				"title":           listing.Title,
-				"description":     listing.Description,
-				"one_liner":       listing.OneLinerDesc,
-				"company":         listing.Company,
-				"application_url": listing.ApplicationURL,
-				"wfh_status":      listing.WFHStatus,
-				"source_urls":     listing.SourceURLs,
-				"type":            listing.Type,
-				"close_date":      listing.CloseDate,
-				"locations":       listing.Locations,
-				"study_fields":    listing.StudyFields,
-				"working_rights":  listing.WorkingRights,
-				"industry_field":  listing.IndustryField,
-				"source":          listing.Source,
-				"is_sponsored":    listing.IsSponsored,
-				"version":         s.version,
-				"updated_at":      now,
-				"outdated":        false,
-				"days_lived":      0,
-				"fingerprint":     fingerprint,
-			}
-
-			// Only write the enrichment fields when this run actually produced
-			// them. RUN_PIPELINE_STEPS is an allowlist, so skipping AI_Parser or
-			// BoardScoring leaves them at their zero values -- writing those
-			// unconditionally would erase good data across the whole collection
-			// on the next partial run.
-			if listing.Discipline != "" {
-				set["discipline"] = listing.Discipline
-				set["board_score"] = listing.BoardScore
-				set["board_eligible"] = listing.BoardEligible
-			}
-
-			if listing.OpenDate != nil {
-				set["open_date"] = listing.OpenDate
-			}
+			set := buildListingSet(listing, fingerprint, s.version, now)
 
 			update := bson.M{
 				"$set": set,

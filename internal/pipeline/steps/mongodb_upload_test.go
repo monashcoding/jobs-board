@@ -2,6 +2,7 @@ package steps
 
 import (
 	"testing"
+	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 )
@@ -131,5 +132,66 @@ func TestGenerateListingFingerprintIgnoresNilApplicationURL(t *testing.T) {
 
 	if GenerateListingFingerprint(withURL) != GenerateListingFingerprint(withoutURL) {
 		t.Error("a nil application URL must not change the fingerprint")
+	}
+}
+
+// A listing whose AI enrichment failed (an exhausted OpenAI quota returns 429
+// for every call in the run) must not null out the values a previous run stored.
+func TestBuildListingSetOmitsMissingEnrichment(t *testing.T) {
+	listing := models.Listing{
+		Title:   "Software Engineer",
+		Company: models.Company{Name: "Atlassian"},
+	}
+
+	set := buildListingSet(listing, "fp", "1.0.0", time.Now())
+
+	for _, field := range []string{"one_liner", "type", "industry_field", "discipline", "board_score", "board_eligible"} {
+		if _, ok := set[field]; ok {
+			t.Errorf("%q written despite the listing not being enriched; this erases stored data", field)
+		}
+	}
+
+	if set["title"] != "Software Engineer" {
+		t.Errorf("scraped fields should still be written, got %v", set["title"])
+	}
+}
+
+func TestBuildListingSetWritesPresentEnrichment(t *testing.T) {
+	oneLiner := "Apply your Go skills on distributed systems"
+	jobType := models.GRADUATE
+	listing := models.Listing{
+		Title:         "Software Engineer",
+		OneLinerDesc:  &oneLiner,
+		Type:          &jobType,
+		IndustryField: models.BIG_TECH,
+		Discipline:    models.SOFTWARE,
+		BoardScore:    7,
+		BoardEligible: true,
+	}
+
+	set := buildListingSet(listing, "fp", "1.0.0", time.Now())
+
+	if set["one_liner"] != &oneLiner {
+		t.Errorf("one_liner not written: %v", set["one_liner"])
+	}
+	if set["industry_field"] != models.BIG_TECH {
+		t.Errorf("industry_field not written: %v", set["industry_field"])
+	}
+	if set["discipline"] != models.SOFTWARE {
+		t.Errorf("discipline not written: %v", set["discipline"])
+	}
+	if set["board_score"] != 7 {
+		t.Errorf("board_score not written: %v", set["board_score"])
+	}
+}
+
+// An empty one-liner is as destructive as a nil one: it replaces a good stored
+// value with a blank string.
+func TestBuildListingSetOmitsEmptyOneLiner(t *testing.T) {
+	empty := ""
+	listing := models.Listing{Title: "Software Engineer", OneLinerDesc: &empty}
+
+	if _, ok := buildListingSet(listing, "fp", "1.0.0", time.Now())["one_liner"]; ok {
+		t.Error("empty one_liner written; this erases the stored value")
 	}
 }
