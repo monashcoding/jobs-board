@@ -195,3 +195,86 @@ func TestBuildListingSetOmitsEmptyOneLiner(t *testing.T) {
 		t.Error("empty one_liner written; this erases the stored value")
 	}
 }
+
+func TestBuildListingSetWritesSourceDescriptionHash(t *testing.T) {
+	l := models.Listing{Title: "Software Engineer", SourceDescriptionHash: "abc123"}
+
+	if buildListingSet(l, "fp", "1.0.0", time.Now())["source_description_hash"] != "abc123" {
+		t.Error("source_description_hash not written")
+	}
+}
+
+// A run with the AI parser disabled produces no hash, and must not clear the
+// stored one -- that would force every description to be reformatted.
+func TestBuildListingSetOmitsEmptySourceDescriptionHash(t *testing.T) {
+	l := models.Listing{Title: "Software Engineer"}
+
+	if _, ok := buildListingSet(l, "fp", "1.0.0", time.Now())["source_description_hash"]; ok {
+		t.Error("empty source_description_hash written; this invalidates the stored description")
+	}
+}
+
+// updated_at is stamped on every run, so including it in the hash would make
+// every document differ from itself and defeat the comparison entirely.
+func TestContentHashIgnoresUpdatedAt(t *testing.T) {
+	l := models.Listing{Title: "Software Engineer", Company: models.Company{Name: "Atlassian"}}
+
+	early := ContentHash(buildListingSet(l, "fp", "1.0.0", time.Now()))
+	later := ContentHash(buildListingSet(l, "fp", "1.0.0", time.Now().Add(48*time.Hour)))
+
+	if early != later {
+		t.Error("a later run with identical content must produce the same hash")
+	}
+	if early == "" {
+		t.Fatal("hash must not be empty for an encodable listing")
+	}
+}
+
+func TestContentHashChangesWithRealEdits(t *testing.T) {
+	now := time.Now()
+	base := models.Listing{Title: "Software Engineer", Company: models.Company{Name: "Atlassian"}}
+	baseline := ContentHash(buildListingSet(base, "fp", "1.0.0", now))
+
+	oneLiner := "Apply your Go skills on distributed systems"
+	edits := map[string]models.Listing{
+		"title":     {Title: "Senior Software Engineer", Company: base.Company},
+		"one_liner": {Title: base.Title, Company: base.Company, OneLinerDesc: &oneLiner},
+		"company":   {Title: base.Title, Company: models.Company{Name: "Canva"}},
+	}
+
+	for name, edited := range edits {
+		if ContentHash(buildListingSet(edited, "fp", "1.0.0", now)) == baseline {
+			t.Errorf("a changed %s must change the hash", name)
+		}
+	}
+}
+
+func TestNeedsWrite(t *testing.T) {
+	const hash = "abc123"
+
+	cases := []struct {
+		name   string
+		stored storedState
+		found  bool
+		hash   string
+		want   bool
+	}{
+		{"new document", storedState{}, false, hash, true},
+		{"unchanged and live", storedState{ContentHash: hash}, true, hash, false},
+		{"content changed", storedState{ContentHash: "different"}, true, hash, true},
+		{"no stored hash yet", storedState{}, true, hash, true},
+		// Content matches but the document must still be brought back to life.
+		{"unchanged but outdated", storedState{ContentHash: hash, Outdated: true}, true, hash, true},
+		{"unchanged but ageing out", storedState{ContentHash: hash, DaysLived: 3}, true, hash, true},
+		// A hash we could not compute must never suppress a write.
+		{"unhashable listing", storedState{ContentHash: hash}, true, "", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := needsWrite(tc.stored, tc.found, tc.hash); got != tc.want {
+				t.Errorf("needsWrite = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

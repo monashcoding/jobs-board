@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -173,7 +174,110 @@ func buildListingSet(listing models.Listing, fingerprint string, version string,
 		set["open_date"] = listing.OpenDate
 	}
 
+	// Written only when the AI parser ran, for the same reason as the fields
+	// above: an empty hash from a partial run would otherwise invalidate the
+	// stored description and force it to be reformatted from scratch.
+	if listing.SourceDescriptionHash != "" {
+		set["source_description_hash"] = listing.SourceDescriptionHash
+	}
+
 	return set
+}
+
+// volatileSetKeys are written on every run by definition, so they are excluded
+// from the content hash. Including updated_at would make every document differ
+// from itself and defeat the whole comparison.
+var volatileSetKeys = map[string]bool{"updated_at": true}
+
+// ContentHash fingerprints what this run would write for a listing. Documents
+// whose hash is unchanged are skipped entirely rather than rewritten with a
+// fresh updated_at.
+//
+// This matters well beyond saving a write. Every upsert that touches a document
+// is an oplog entry and therefore a change stream event, and the Discord bot
+// turns each event into a fetch of the thread, a fetch of its starter message
+// and an edit. Stamping updated_at unconditionally guaranteed every document
+// changed on every run, so a scrape rewrote every live thread -- thousands of
+// Discord API calls to replace content with itself.
+func ContentHash(set bson.M) string {
+	stable := make(map[string]interface{}, len(set))
+	for k, v := range set {
+		if !volatileSetKeys[k] {
+			stable[k] = v
+		}
+	}
+
+	// encoding/json sorts map keys, so this encoding is stable across runs.
+	encoded, err := json.Marshal(stable)
+	if err != nil {
+		// A listing we cannot encode simply always writes, which is the safe
+		// direction: it can never suppress a real change.
+		utils.Warn("Failed to hash listing content, it will be rewritten: %v", err)
+		return ""
+	}
+
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
+}
+
+// storedState is the minimum needed to decide whether a document can be left
+// untouched.
+type storedState struct {
+	Fingerprint string `bson:"fingerprint"`
+	ContentHash string `bson:"content_hash"`
+	Outdated    bool   `bson:"outdated"`
+	DaysLived   int    `bson:"days_lived"`
+}
+
+// loadStoredState fetches the current hash and liveness of every fingerprint
+// this run saw, so unchanged documents can be skipped.
+func loadStoredState(ctx context.Context, coll *mongo.Collection, fingerprints []string) map[string]storedState {
+	state := make(map[string]storedState)
+
+	cursor, err := coll.Find(ctx,
+		bson.M{"fingerprint": bson.M{"$in": fingerprints}},
+		options.Find().SetProjection(bson.M{
+			"fingerprint":  1,
+			"content_hash": 1,
+			"outdated":     1,
+			"days_lived":   1,
+		}))
+	if err != nil {
+		utils.Warn("Failed to load stored state; every document will be rewritten: %v", err)
+		return state
+	}
+	defer cursor.Close(ctx)
+
+	var docs []storedState
+	if err := cursor.All(ctx, &docs); err != nil {
+		utils.Warn("Failed to decode stored state; every document will be rewritten: %v", err)
+		return state
+	}
+
+	for _, doc := range docs {
+		// Duplicates share a fingerprint until the migration deletes them.
+		// Preferring the live one keeps a stale duplicate from suppressing a
+		// write the real document needs.
+		if existing, clash := state[doc.Fingerprint]; clash && !existing.Outdated {
+			continue
+		}
+		state[doc.Fingerprint] = doc
+	}
+
+	return state
+}
+
+// needsWrite reports whether a listing has to be written at all.
+func needsWrite(stored storedState, found bool, hash string) bool {
+	if !found || hash == "" || stored.ContentHash == "" {
+		return true
+	}
+	if stored.ContentHash != hash {
+		return true
+	}
+	// The content matches, but the document still has to be brought back to
+	// life if a previous run marked it outdated or started ageing it out.
+	return stored.Outdated || stored.DaysLived != 0
 }
 
 func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
@@ -226,42 +330,52 @@ func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listi
 		return nil, fmt.Errorf("failed to mark existing jobs: %w", err)
 	}
 
-	batchSize := 100
-	// Process listings in batches
-	for i := 0; i < len(listings); i += batchSize {
-		end := i + batchSize
-		if end > len(listings) {
-			end = len(listings)
+	// Skip documents this run would rewrite identically. Each write is a change
+	// stream event and the Discord bot edits a thread for every one of them.
+	stored := loadStoredState(ctx, activeColl, seenFingerprints)
+
+	operations := make([]mongo.WriteModel, 0, len(listings))
+	unchanged := 0
+
+	for i, listing := range listings {
+		fingerprint := seenFingerprints[i]
+
+		set := buildListingSet(listing, fingerprint, s.version, now)
+		hash := ContentHash(set)
+
+		state, found := stored[fingerprint]
+		if !needsWrite(state, found, hash) {
+			unchanged++
+			continue
 		}
-		batch := listings[i:end]
 
-		operations := make([]mongo.WriteModel, len(batch))
-		for j, listing := range batch {
-			// Generate fingerprint for matching
-			fingerprint := GenerateListingFingerprint(listing)
+		if hash != "" {
+			set["content_hash"] = hash
+		}
 
-			// Prepare the update operation
-			filter := bson.M{"fingerprint": fingerprint}
-
-			set := buildListingSet(listing, fingerprint, s.version, now)
-
-			update := bson.M{
+		operations = append(operations, mongo.NewUpdateOneModel().
+			SetFilter(bson.M{"fingerprint": fingerprint}).
+			SetUpdate(bson.M{
 				"$set": set,
 				"$setOnInsert": bson.M{
 					"created_at": now,
 				},
-			}
+			}).
+			SetUpsert(true))
+	}
 
-			operations[j] = mongo.NewUpdateOneModel().
-				SetFilter(filter).
-				SetUpdate(update).
-				SetUpsert(true)
+	utils.Success("Upload: %d listings changed, %d unchanged and left untouched.",
+		len(operations), unchanged)
+
+	batchSize := 100
+	for i := 0; i < len(operations); i += batchSize {
+		end := i + batchSize
+		if end > len(operations) {
+			end = len(operations)
 		}
 
-		// Execute batch operation
 		opts := options.BulkWrite().SetOrdered(false)
-		_, err := activeColl.BulkWrite(ctx, operations, opts)
-		if err != nil {
+		if _, err := activeColl.BulkWrite(ctx, operations[i:end], opts); err != nil {
 			return nil, fmt.Errorf("failed to update active jobs batch: %w", err)
 		}
 	}

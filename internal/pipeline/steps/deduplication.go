@@ -23,6 +23,16 @@ func (s *DeduplicationStep) Name() string {
 	return "Deduplication"
 }
 
+// jobTypesCanDiffer reports whether two listings are distinguishable by job
+// type. A nil type is unknown rather than different, so it matches anything:
+// treating it as its own value is what let duplicates through.
+func jobTypesCanDiffer(a, b *models.JobType) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	return *a != *b
+}
+
 func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
 	/*------------------------------------------------*/
 	/* Deduplication Strategy (in order):             */
@@ -77,16 +87,24 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 		urlFiltered = append(urlFiltered, listing)
 	}
 
-	// Step 3: Filter by title, company, type, and location
-	seenListings := make(map[string]bool)
+	// Step 3: Filter by title, company, and location, treating an unknown job
+	// type as matching any type.
+	//
+	// Job type used to be part of the key outright, which quietly stopped
+	// working: LinkedIn is the only scraper that does not set it
+	// (parser.go: "Type: nil, // TODO"), and this step runs before the AI parser
+	// fills it in. The same job scraped from both LinkedIn and GradConnection
+	// therefore hashed as ""|... and "INTERN"|..., survived as two listings, and
+	// only looked identical later once the parser had filled the gap. That was
+	// 18 of 98 board-eligible listings, and TikTok alone carried 18 duplicate
+	// pairs.
+	//
+	// Two genuinely different roles that share a title and location but differ
+	// in type are still kept apart, so an intern and a graduate opening of the
+	// same name do not collapse into one.
+	seenListings := make(map[string][]int)
 
 	for _, listing := range urlFiltered {
-		// Create unique key from title, company, type, and locations
-		var typeStr string
-		if listing.Type != nil {
-			typeStr = string(*listing.Type)
-		}
-
 		// Convert locations to strings and sort them for consistent hashing
 		locStrs := make([]string, len(listing.Locations))
 		for i, loc := range listing.Locations {
@@ -94,19 +112,31 @@ func (s *DeduplicationStep) Process(ctx context.Context, listings []models.Listi
 		}
 		sort.Strings(locStrs)
 
-		// Create hash
-		hash := fmt.Sprintf("%s|%s|%s|%s",
+		hash := fmt.Sprintf("%s|%s|%s",
 			listing.Title,
 			listing.Company.Name,
-			typeStr,
 			strings.Join(locStrs, ","))
 
-		if seenListings[hash] {
-			utils.Custom("[Hash Exact Match] Skipping %s | %s from %s", listing.Company.Name, listing.Title, listing.Source)
+		duplicate := false
+		for _, kept := range seenListings[hash] {
+			if !jobTypesCanDiffer(result[kept].Type, listing.Type) {
+				utils.Custom("[Hash Exact Match] Skipping %s | %s from %s", listing.Company.Name, listing.Title, listing.Source)
+
+				// Keep whichever copy knows its job type. Sources disagree about
+				// which fields they populate, and the surviving listing carries
+				// the type into the fingerprint and the board gates.
+				if result[kept].Type == nil && listing.Type != nil {
+					result[kept] = listing
+				}
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
 			continue
 		}
 
-		seenListings[hash] = true
+		seenListings[hash] = append(seenListings[hash], len(result))
 		result = append(result, listing)
 	}
 

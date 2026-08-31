@@ -28,26 +28,46 @@ func (s *SynchronisationStep) Process(ctx context.Context, listings []models.Lis
 
 	*/
 
+	logos := buildCompanyLogoIndex(listings)
+
 	for i := range listings {
 		// Pass pointer to the listing
-		SyncCompanyLogoUrl(&listings[i], listings)
+		SyncCompanyLogoUrl(&listings[i], logos)
 	}
 	return listings, nil
 }
 
-func SyncCompanyLogoUrl(listing *models.Listing, allListings []models.Listing) {
+// buildCompanyLogoIndex maps each company to the first non-empty logo seen for
+// it. Resolving the logo by rescanning every listing per listing was quadratic:
+// a full scrape is a few thousand listings, so it cost millions of string
+// comparisons to answer a question with one distinct answer per company.
+func buildCompanyLogoIndex(listings []models.Listing) map[string]*string {
+	logos := make(map[string]*string)
+
+	for i := range listings {
+		company := listings[i].Company
+		if company.Logo == nil || *company.Logo == "" {
+			continue
+		}
+		if _, seen := logos[company.Name]; !seen {
+			logos[company.Name] = company.Logo
+		}
+	}
+
+	return logos
+}
+
+// SyncCompanyLogoUrl fills in a missing company logo from another listing for
+// the same company. LinkedIn listings arrive without logos, so they borrow one
+// from whichever source did supply it.
+func SyncCompanyLogoUrl(listing *models.Listing, logos map[string]*string) {
 	// More defensive nil checking
 	if listing == nil || listing.Company.Logo != nil && *listing.Company.Logo != "" {
 		return
 	}
 
-	for _, l := range allListings {
-		if l.Company.Name == listing.Company.Name &&
-			l.Company.Logo != nil &&
-			*l.Company.Logo != "" {
-			utils.Log("Synchronising company logo for %s", listing.Company.Name)
-			listing.Company.Logo = l.Company.Logo
-			break
-		}
+	if logo, ok := logos[listing.Company.Name]; ok {
+		utils.Log("Synchronising company logo for %s", listing.Company.Name)
+		listing.Company.Logo = logo
 	}
 }

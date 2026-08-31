@@ -98,27 +98,32 @@ const (
 )
 
 type Listing struct {
-	ID             primitive.ObjectID `bson:"_id,omitempty" json:"id"`
-	Title          string             `bson:"title" json:"title"`
-	Description    *string            `bson:"description" json:"description"`
-	OneLinerDesc   *string            `bson:"one_liner" json:"one_liner"`
-	Company        Company            `bson:"company" json:"company"`
-	ApplicationURL *string            `bson:"application_url" json:"application_url"`
-	WFHStatus      *WFHStatus         `bson:"wfh_status" json:"wfh_status"`
-	SourceURLs     []string           `bson:"source_urls" json:"source_urls"`
-	Type           *JobType           `bson:"type" json:"type"`
-	OpenDate       *time.Time         `bson:"open_date,omitempty" json:"open_date"`
-	CloseDate      *time.Time         `bson:"close_date,omitempty" json:"close_date"`
-	Locations      []LocationType     `bson:"locations" json:"locations"`
-	Source         Source             `bson:"source" json:"source"`
-	StudyFields    []string           `bson:"study_fields" json:"study_fields"`
-	IndustryField  IndustryField      `bson:"industry_field" json:"industry_field"`
-	Discipline     Discipline         `bson:"discipline" json:"discipline"`
-	BoardScore     int                `bson:"board_score" json:"board_score"`
-	BoardEligible  bool               `bson:"board_eligible" json:"board_eligible"`
-	WorkingRights  []WorkingRight     `bson:"working_rights" json:"working_rights"`
-	IsSponsored    bool               `bson:"is_sponsored" json:"is_sponsored"`
-	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
-	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
-	Days_lived     int                `bson:"days_lived" json:"days_lived"`
+	ID          primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+	Title       string             `bson:"title" json:"title"`
+	Description *string            `bson:"description" json:"description"`
+	// SourceDescriptionHash is the hash of the description exactly as scraped,
+	// before any formatting is applied. Description itself is stored in its
+	// formatted form, so it cannot be compared against a fresh scrape to tell
+	// whether the source actually changed; this can.
+	SourceDescriptionHash string         `bson:"source_description_hash,omitempty" json:"-"`
+	OneLinerDesc          *string        `bson:"one_liner" json:"one_liner"`
+	Company               Company        `bson:"company" json:"company"`
+	ApplicationURL        *string        `bson:"application_url" json:"application_url"`
+	WFHStatus             *WFHStatus     `bson:"wfh_status" json:"wfh_status"`
+	SourceURLs            []string       `bson:"source_urls" json:"source_urls"`
+	Type                  *JobType       `bson:"type" json:"type"`
+	OpenDate              *time.Time     `bson:"open_date,omitempty" json:"open_date"`
+	CloseDate             *time.Time     `bson:"close_date,omitempty" json:"close_date"`
+	Locations             []LocationType `bson:"locations" json:"locations"`
+	Source                Source         `bson:"source" json:"source"`
+	StudyFields           []string       `bson:"study_fields" json:"study_fields"`
+	IndustryField         IndustryField  `bson:"industry_field" json:"industry_field"`
+	Discipline            Discipline     `bson:"discipline" json:"discipline"`
+	BoardScore            int            `bson:"board_score" json:"board_score"`
+	BoardEligible         bool           `bson:"board_eligible" json:"board_eligible"`
+	WorkingRights         []WorkingRight `bson:"working_rights" json:"working_rights"`
+	IsSponsored           bool           `bson:"is_sponsored" json:"is_sponsored"`
+	CreatedAt             time.Time      `bson:"created_at" json:"created_at"`
+	UpdatedAt             time.Time      `bson:"updated_at" json:"updated_at"`
+	Days_lived            int            `bson:"days_lived" json:"days_lived"`
 }

@@ -54,6 +54,12 @@ func RunScraper() {
 	defer mongodb.Disconnect(ctx)
 	utils.Success("MongoDB connected.")
 
+	// Indexes are ensured before the pipeline runs rather than in a migration,
+	// so a rebuilt collection heals itself on the next run.
+	if err := mongodb.EnsureIndexes(ctx); err != nil {
+		utils.Warn("Failed to ensure indexes, continuing with degraded query performance: %v", err)
+	}
+
 	// Set up graceful shutdown
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)

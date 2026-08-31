@@ -40,10 +40,20 @@ VERSION=1.0.0
 Optional overrides (leave unset to run everything):
 
 ```
+BOARD_MAX_LISTINGS=100
+BOARD_MAX_PER_EMPLOYER=5
 RUN_SCRAPERS=GradConnection,Prosple,LinkedIn,JaneStreet,Atlassian
 RUN_PIPELINE_STEPS=WriteJSON,Normalisation,Deduplication,Synchronisation,AIParser,Upload
 SCRAPER_JOB_LIMITS=LINKEDIN:10,GRADCONNECTION:5
 ```
+
+`BOARD_MAX_LISTINGS` caps how many listings are marked board-eligible in one
+run; the highest scoring win. It defaults to 100. Set it to 0 to remove the cap.
+`BOARD_MAX_PER_EMPLOYER` caps how many of one employer's roles reach the board,
+defaulting to 5, so a single large intake cannot take over the forum. It is
+applied first, then the overall cap. Set it to 0 to remove it.
+Which employers can reach the board at all is a separate, hand-maintained list
+in `internal/utils/notable_companies.go`.
 
 Dokploy injects these into the container environment. There is no `.env` file
 in the image and none is needed — `godotenv.Load()` failing is now a warning,

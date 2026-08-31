@@ -56,6 +56,42 @@ func NewMongoDB(ctx context.Context) (*MongoDB, error) {
 	}, nil
 }
 
+// EnsureIndexes creates the indexes active_jobs depends on. It is safe to call
+// on every start: CreateMany is a no-op for an index that already exists.
+//
+// fingerprint is the upsert key for every write the scraper makes, so without an
+// index each of the ~2,800 upserts in a run is a full collection scan, as is the
+// $nin sweep that marks unseen jobs outdated and the enrichment-cache lookup.
+// The collection is small enough that the build is effectively instant.
+//
+// The index is deliberately NOT unique. Re-keying reveals collision groups --
+// documents that collapse onto one identity under a new algorithm -- and
+// cmd/migrate-fingerprints deletes those in a separate phase so the Discord bot
+// can tidy the matching threads. A unique index would reject the write instead.
+func (m *MongoDB) EnsureIndexes(ctx context.Context) error {
+	activeJobs := m.database.Collection("active_jobs")
+
+	models := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "fingerprint", Value: 1}},
+			Options: options.Index().SetName("fingerprint_1"),
+		},
+		{
+			// Read twice per run to count and sweep the outdated backlog.
+			Keys:    bson.D{{Key: "outdated", Value: 1}},
+			Options: options.Index().SetName("outdated_1"),
+		},
+	}
+
+	names, err := activeJobs.Indexes().CreateMany(ctx, models)
+	if err != nil {
+		return fmt.Errorf("failed to create active_jobs indexes: %w", err)
+	}
+
+	utils.Log("active_jobs indexes ensured: %v", names)
+	return nil
+}
+
 // GetCollection returns the MongoDB collection
 func (m *MongoDB) GetCollection(name string) *mongo.Collection {
 	return m.database.Collection(name)
