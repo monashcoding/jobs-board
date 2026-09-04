@@ -160,29 +160,55 @@ func TestFixDescriptionFormatSkipsApiCallForHtml(t *testing.T) {
 	}
 }
 
-// A listing whose three classification axes are all known was resolved by an
+// A listing whose classification and summary are both known was resolved by an
 // earlier run; title and company are part of the fingerprint, so the answer
 // cannot have changed.
-func TestGetIndustryFieldandTypeSkipsWhenFullyClassified(t *testing.T) {
+func TestEnrichListingSkipsWhenFullyEnriched(t *testing.T) {
 	jobType := models.GRADUATE
+	summary := "Apply your Go skills on payment systems"
 	listing := models.Listing{
 		Title:         "Software Engineer",
 		IndustryField: models.BIG_TECH,
 		Type:          &jobType,
 		Discipline:    models.SOFTWARE,
+		OneLinerDesc:  &summary,
 	}
 
 	step := NewAiParserStep()
-	got, err := step.GetIndustryFieldandType(context.Background(), listing)
+	got, err := step.EnrichListing(context.Background(), listing)
 	if err != nil {
-		t.Fatalf("GetIndustryFieldandType returned error: %v", err)
+		t.Fatalf("EnrichListing returned error: %v", err)
 	}
 
 	if got.IndustryField != models.BIG_TECH || got.Discipline != models.SOFTWARE {
 		t.Errorf("cached classification was overwritten: %+v", got)
 	}
+	if got.OneLinerDesc == nil || *got.OneLinerDesc != summary {
+		t.Errorf("cached summary was overwritten: %+v", got.OneLinerDesc)
+	}
 	if step.skippedJobs != 1 {
 		t.Errorf("expected the API call to be skipped, skippedJobs = %d", step.skippedJobs)
+	}
+}
+
+// A listing that is classified but has no summary still needs the call: the
+// enrichment is only skippable when every field it produces is already known.
+func TestEnrichListingStillCallsWhenOnlyPartlyKnown(t *testing.T) {
+	jobType := models.GRADUATE
+	desc := "Build payment systems in Go."
+	listing := models.Listing{
+		Title:         "Software Engineer",
+		IndustryField: models.BIG_TECH,
+		Type:          &jobType,
+		Discipline:    models.SOFTWARE,
+		Description:   &desc,
+	}
+
+	step := NewAiParserStep()
+	_, _ = step.EnrichListing(context.Background(), listing)
+
+	if step.skippedJobs != 0 {
+		t.Error("a missing summary must not be skipped as though it were cached")
 	}
 }
 
@@ -453,8 +479,8 @@ func TestRetailAndTransportationAreClassifiable(t *testing.T) {
 // The schema is what stops the model emitting "INTERNS" or putting a discipline
 // in the industry slot. Job type is a hard gate on board eligibility, so an
 // unconstrained near miss silently drops a real job off the board.
-func TestClassificationSchemaConstrainsEveryAxis(t *testing.T) {
-	schema := classificationSchema()
+func TestEnrichmentSchemaConstrainsEveryAxis(t *testing.T) {
+	schema := enrichmentSchema()
 
 	inner, ok := schema["json_schema"].(map[string]any)
 	if !ok {
@@ -517,28 +543,33 @@ func TestClassificationPromptCarriesTheDescription(t *testing.T) {
 	description := "You will build backend services in Go and Kubernetes."
 	listing := models.Listing{Title: "Graduate Program", Description: &description}
 
-	suffix := classificationDescriptionSuffix(listing)
+	suffix := enrichmentDescriptionSuffix(listing)
 	if !strings.Contains(suffix, "Go and Kubernetes") {
 		t.Errorf("description not included in the prompt: %q", suffix)
 	}
 }
 
 func TestClassificationDescriptionSuffixIsBoundedAndOptional(t *testing.T) {
-	if got := classificationDescriptionSuffix(models.Listing{Title: "T"}); got != "" {
+	if got := enrichmentDescriptionSuffix(models.Listing{Title: "T"}); got != "" {
 		t.Errorf("a listing with no description must add nothing, got %q", got)
 	}
 
 	long := strings.Repeat("x", classificationDescriptionLimit*3)
-	suffix := classificationDescriptionSuffix(models.Listing{Title: "T", Description: &long})
+	suffix := enrichmentDescriptionSuffix(models.Listing{Title: "T", Description: &long})
 	if len([]rune(suffix)) > classificationDescriptionLimit+64 {
 		t.Errorf("description excerpt not bounded: %d runes", len([]rune(suffix)))
 	}
 }
 
-// A description longer than the model can echo back must be left alone. Capping
-// output instead would store the job description truncated mid-sentence.
-func TestOversizeDescriptionIsNotSentForFormatting(t *testing.T) {
-	huge := strings.Repeat("plain text with no markup. ", maxFormattableDescription/10)
+// Descriptions used to be capped because the model had to echo them back and a
+// long one risked being stored truncated mid-sentence. Markup is local now, so
+// there is no cap and no call -- but the invariant it protected still holds:
+// every word survives, at any size.
+func TestOversizeDescriptionIsMarkedUpIntactWithoutAnAPICall(t *testing.T) {
+	huge := strings.Repeat("plain text with no markup.\n\n", 2000)
+	// FixDescriptionFormat writes through the *string, so snapshot the count
+	// before calling or the "before" and "after" are the same string.
+	wantWords := len(strings.Fields(huge))
 	listing := models.Listing{Title: "Graduate Engineer", Description: &huge}
 
 	step := NewAiParserStep()
@@ -548,10 +579,27 @@ func TestOversizeDescriptionIsNotSentForFormatting(t *testing.T) {
 	}
 
 	if step.skippedJobs != 1 {
-		t.Error("an oversize description was sent for formatting anyway")
+		t.Error("formatting must never reach the API now that markup is local")
 	}
-	if len(*got.Description) < maxFormattableDescription {
-		t.Error("the description must be kept intact, not truncated")
+
+	gotWords := len(strings.Fields(tagStripper.ReplaceAllString(*got.Description, " ")))
+	if gotWords != wantWords {
+		t.Errorf("description was not kept intact: got %d words, want %d", gotWords, wantWords)
+	}
+}
+
+// A source that already returned HTML keeps its own markup: re-wrapping it
+// would escape the tags it arrived with and render them as visible text.
+func TestExistingHTMLDescriptionIsLeftAlone(t *testing.T) {
+	original := "<p>Already <strong>formatted</strong>.</p>"
+	listing := models.Listing{Title: "Engineer", Description: &original}
+
+	got, err := NewAiParserStep().FixDescriptionFormat(context.Background(), listing)
+	if err != nil {
+		t.Fatalf("FixDescriptionFormat: %v", err)
+	}
+	if *got.Description != original {
+		t.Errorf("existing HTML was rewritten: got %q", *got.Description)
 	}
 }
 
@@ -700,5 +748,50 @@ func TestRunIsBroken(t *testing.T) {
 				t.Fatalf("runIsBroken(%d, %d) = %v, want %v", tc.failed, tc.total, got, tc.want)
 			}
 		})
+	}
+}
+
+// The schema makes summary required, so a listing with no description still
+// gets a sentence back -- invented from the title. Storing that would put a
+// confident, unfounded description of the work on the board.
+func TestEnrichListingDoesNotInventASummaryWithoutADescription(t *testing.T) {
+	jobType := models.GRADUATE
+	listing := models.Listing{
+		Title:         "Graduate Program",
+		Company:       models.Company{Name: "Example"},
+		IndustryField: models.BIG_TECH,
+		Type:          &jobType,
+		Discipline:    models.SOFTWARE,
+	}
+
+	step := NewAiParserStep()
+	got, err := step.EnrichListing(context.Background(), listing)
+	if err != nil {
+		t.Fatalf("EnrichListing: %v", err)
+	}
+
+	if got.OneLinerDesc != nil {
+		t.Errorf("a summary was invented with no description to base it on: %q", *got.OneLinerDesc)
+	}
+	if step.skippedJobs != 1 {
+		t.Error("with no description there is nothing to fetch, so the call must be skipped")
+	}
+}
+
+// Classification is made from title and company, so a listing with no
+// description still needs the call. Only the summary depends on description
+// text, and skipping the whole operation would leave the listing unclassified
+// -- which means no discipline, which means it silently never reaches the board.
+func TestEnrichListingStillClassifiesWithoutADescription(t *testing.T) {
+	listing := models.Listing{
+		Title:   "Graduate Software Engineer",
+		Company: models.Company{Name: "Example"},
+	}
+
+	step := NewAiParserStep()
+	_, _ = step.EnrichListing(context.Background(), listing)
+
+	if step.skippedJobs != 0 {
+		t.Error("an unclassified listing was skipped, so it would never gain a discipline")
 	}
 }

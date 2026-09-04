@@ -35,6 +35,7 @@ type AIParserStep struct {
 	maxConcurrent int
 	sleepDuration time.Duration
 	mongodb       *database.MongoDB
+	budget        *tokenBudget
 }
 
 // NewAiParserStep builds the step without a database handle, so it re-derives
@@ -52,6 +53,7 @@ func NewAiParserStepWithCache(mongodb *database.MongoDB) *AIParserStep {
 		semaphore:     make(chan struct{}, maxConcurrent),
 		sleepDuration: 1 * time.Second,
 		mongodb:       mongodb,
+		budget:        newTokenBudget(tokensPerMinuteFromEnv()),
 	}
 }
 
@@ -237,7 +239,9 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 	s.applyCachedEnrichment(ctx, listings)
 
 	parsedListings := make([]models.Listing, len(listings))
-	s.totalJobs = int32(len(listings) * 3)
+	// Two operations per listing: local markup, then the merged enrichment
+	// call.
+	s.totalJobs = int32(len(listings) * operationsPerListing)
 	s.completedJobs = 0
 	s.skippedJobs = 0
 
@@ -282,14 +286,9 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 				recordErr("Failed to fix description format: %v", err)
 			}
 
-			updatedListing, err = s.GetIndustryFieldandType(ctx, updatedListing)
+			updatedListing, err = s.EnrichListing(ctx, updatedListing)
 			if err != nil {
-				recordErr("Failed to get industry field: %v", err)
-			}
-
-			updatedListing, err = s.GenerateOneLinerDesc(ctx, updatedListing)
-			if err != nil {
-				recordErr("Failed to generate one liner description: %v", err)
+				recordErr("Failed to enrich listing: %v", err)
 			}
 
 			parsedListings[i] = updatedListing
@@ -379,6 +378,11 @@ type ChatResponse struct {
 // structure. Sources overwhelmingly return HTML, so this is the common case.
 var blockTagPattern = regexp.MustCompile(`(?i)<(p|div|h[1-6]|ul|ol|li|br|table|section)\b`)
 
+// htmlTagPattern matches any HTML tag, opening or closing. It deliberately
+// requires a letter after the "<" so that plain prose like "<5 years" or
+// "salary <$100k" is not mistaken for markup.
+var htmlTagPattern = regexp.MustCompile(`(?i)</?[a-z][a-z0-9]*(\s[^<>]*)?/?>`)
+
 // invisibleRunePattern matches the whitespace-lookalike runes that leak in from
 // scraped pages: non-breaking space, narrow no-break space, zero-width space,
 // zero-width non-joiner/joiner, and the BOM.
@@ -394,68 +398,35 @@ func CleanDescription(description string) string {
 	return strings.TrimSpace(cleaned)
 }
 
-// FixDescriptionFormat normalises the description. It only falls back to the
-// model when the description arrives as plain text and genuinely needs HTML
-// structure added; when the source already returned HTML -- which is nearly
-// always -- the cleanup is done locally for free.
+// FixDescriptionFormat normalises the description and gives it HTML structure.
+//
+// This used to be an API call that echoed the entire description back wrapped
+// in tags. It was by far the most expensive of the three AI operations -- the
+// description was billed on the way in and again, at four times the rate, on
+// the way out -- and it dominated the token-per-minute budget that was getting
+// runs rate limited. Paragraphs, lists and headings are punctuation, not
+// meaning, so MarkupDescription derives them locally instead: free, instant,
+// and incapable of rewording a posting it was only asked to wrap.
 func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.Listing) (models.Listing, error) {
+	atomic.AddInt32(&s.completedJobs, 1)
+	atomic.AddInt32(&s.skippedJobs, 1)
+
 	if listing.Description == nil || strings.TrimSpace(*listing.Description) == "" {
-		atomic.AddInt32(&s.completedJobs, 1)
 		return listing, nil
 	}
 
 	cleaned := CleanDescription(*listing.Description)
-	*listing.Description = cleaned
 
-	if blockTagPattern.MatchString(cleaned) {
-		atomic.AddInt32(&s.completedJobs, 1)
-		atomic.AddInt32(&s.skippedJobs, 1)
-		utils.Debug("Description for %q already has HTML structure, skipping FixDescription API call.", listing.Title)
+	// Anything that already carries HTML keeps its own markup. The test is any
+	// tag, not just block tags: a description using only <strong> or <a> has no
+	// block structure to detect, but running it through the markup path would
+	// escape those tags and render them to the board as literal text.
+	if htmlTagPattern.MatchString(cleaned) {
+		*listing.Description = cleaned
 		return listing, nil
 	}
 
-	// This prompt echoes the whole description back, so the output cap has to
-	// clear the input or the description is silently stored truncated. A few
-	// postings are enormous (the longest seen is ~18k tokens); rather than pay
-	// to round-trip those, leave them cleaned but unformatted.
-	if len(cleaned) > maxFormattableDescription {
-		atomic.AddInt32(&s.completedJobs, 1)
-		atomic.AddInt32(&s.skippedJobs, 1)
-		utils.Warn("Description for %q is %d chars, too long to reformat safely; keeping it unformatted.", listing.Title, len(cleaned))
-		return listing, nil
-	}
-
-	chatRequest := ChatRequest{
-		Model:  "gpt-4o-mini",
-		Stream: false,
-		// The model's ceiling. A cap is only a limit, not a charge, so setting
-		// it high costs nothing and removes any chance of truncation.
-		MaxTokens: 16384,
-		Messages: []struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}{
-			{Role: "system", Content: "You mark up job descriptions as HTML. You never reword, summarise, shorten or omit any part of the text you are given."},
-			{Role: "user", Content: "Wrap the following job description in HTML tags: paragraphs in <p>, headings in <h3>, lists in <ul>/<li>. " +
-				"Reproduce every word of the original exactly; do not summarise, shorten, reorder or add commentary. " +
-				"Return only the resulting HTML.\n\n" + cleaned},
-		},
-	}
-
-	chatResponse, err := s.makeChatRequest(ctx, chatRequest, "FixDescription")
-	if err != nil {
-		return listing, err
-	}
-
-	if len(chatResponse.Choices) > 0 {
-		desc := strings.TrimPrefix(chatResponse.Choices[0].Message.Content, "```html")
-		desc = strings.TrimSuffix(desc, "```")
-		desc = strings.TrimSpace(desc)
-		*listing.Description = desc
-	} else {
-		utils.Error("No response received.")
-	}
-
+	*listing.Description = MarkupDescription(cleaned)
 	return listing, nil
 }
 
@@ -499,14 +470,115 @@ type classificationResponse struct {
 	Discipline string `json:"discipline"`
 }
 
-// classificationSchema builds the strict JSON schema for the classification
+// enrichmentInstructions is the static half of the prompt. It is held apart
+// from the listing data and sent as the system message so that every request
+// in a run shares a byte-identical prefix, which is the shape prompt caching
+// needs. Previously these ~900 tokens were re-sent inside the user message of
+// every call, which made them the single largest line in the token budget.
+const enrichmentInstructions = "You classify job listings and summarise them. Respond with a JSON object holding the keys industry, job_type, discipline and summary.\n\n" +
+	"1. INDUSTRY, the employer's sector. One of: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, RETAIL, TRANSPORTATION, OTHER_INDUSTRY.\n" +
+	"2. JOBTYPE, one of: INTERN, GRADUATE, OTHER.\n" +
+	"3. DISCIPLINE, the technical discipline of the work itself. One of:\n" +
+	"   SOFTWARE - writing or shipping software: software engineering, web, mobile, embedded, devops, cloud, platform, SRE, QA.\n" +
+	"   DATA - data science, data engineering, analytics, machine learning, AI research.\n" +
+	"   CYBER - cyber security, information security, penetration testing.\n" +
+	"   ENGINEERING - non-software engineering: civil, mechanical, electrical, chemical, mining, aerospace.\n" +
+	"   OTHER_DISCIPLINE - anything else, including consulting, finance, sales, marketing, HR, legal, supply chain, and general graduate programs with no technical component.\n\n" +
+	"Judge DISCIPLINE by the role, not the employer: a marketing role at a software company is OTHER_DISCIPLINE. If the title is generic (e.g. \"Graduate Program\") use the company and description to decide, and prefer OTHER_DISCIPLINE when the work is not clearly technical.\n\n" +
+	"4. SUMMARY, one concise sentence describing the job, naming the concrete skills or tools it uses and what they are applied to. Prefer the form 'Apply your [skills] skills on [projects]'. If the role is not technical, describe it plainly in the same length instead of inventing a tech stack."
+
+// enrichmentResponse is the model's reply to the merged prompt.
+type enrichmentResponse struct {
+	Industry   string `json:"industry"`
+	JobType    string `json:"job_type"`
+	Discipline string `json:"discipline"`
+	Summary    string `json:"summary"`
+}
+
+// EnrichListing derives the three classification axes and the one-line summary
+// in a single request.
+//
+// These were two separate calls, which meant two prompts and -- more expensively
+// -- two copies of the same description for every listing. Both answers are read
+// off the same text, so asking for them together halves the number of requests
+// and removes the duplicated description entirely.
+func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing) (models.Listing, error) {
+	classified := listing.IndustryField != "" && listing.Type != nil && listing.Discipline != ""
+	// With no description there is no summary to be had, so a classified
+	// listing has nothing left to fetch.
+	summarised := (listing.OneLinerDesc != nil && strings.TrimSpace(*listing.OneLinerDesc) != "") ||
+		!hasDescription(listing)
+
+	if classified && summarised {
+		atomic.AddInt32(&s.completedJobs, 1)
+		atomic.AddInt32(&s.skippedJobs, 1)
+		utils.Debug("Enrichment already known for %q, skipping API call.", listing.Title)
+		return listing, nil
+	}
+
+	chatRequest := ChatRequest{
+		Model:  "gpt-4o-mini",
+		Stream: false,
+		// The classification JSON plus one sentence.
+		MaxTokens:      200,
+		ResponseFormat: enrichmentSchema(),
+		Messages: []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		}{
+			{Role: "system", Content: enrichmentInstructions},
+			{Role: "user", Content: "Title: " + listing.Title +
+				"\nCompany: " + listing.Company.Name +
+				enrichmentDescriptionSuffix(listing)},
+		},
+	}
+
+	chatResponse, err := s.makeChatRequest(ctx, chatRequest, "EnrichListing")
+	if err != nil {
+		return listing, err
+	}
+	if len(chatResponse.Choices) == 0 {
+		return listing, fmt.Errorf("no enrichment returned for %q", listing.Title)
+	}
+
+	content := chatResponse.Choices[0].Message.Content
+
+	if !classified {
+		industry, jobType, discipline := parseClassification(content, listing.Title)
+		listing.IndustryField = industry
+		listing.Type = &jobType
+		listing.Discipline = discipline
+	}
+
+	// Only keep a summary that had a description behind it. The schema makes
+	// summary a required field, so a listing with nothing but a title still
+	// gets one back -- invented from the title alone. Classification can be
+	// made from title and company, but a sentence naming "the concrete skills
+	// or tools it uses" cannot, and a plausible invented one is worse on the
+	// board than none at all.
+	if !summarised && hasDescription(listing) {
+		var parsed enrichmentResponse
+		if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &parsed); err == nil {
+			if summary := strings.TrimSpace(parsed.Summary); summary != "" {
+				listing.OneLinerDesc = &summary
+			}
+		} else {
+			utils.Warn("Enrichment reply for %q was not JSON (%v); leaving the summary unset.", listing.Title, err)
+		}
+	}
+
+	atomic.AddInt32(&s.completedJobs, 1)
+	return listing, nil
+}
+
+// enrichmentSchema builds the strict JSON schema for the enrichment
 // call, derived from the same maps used to interpret the reply so the two
 // cannot drift apart.
-func classificationSchema() map[string]any {
+func enrichmentSchema() map[string]any {
 	return map[string]any{
 		"type": "json_schema",
 		"json_schema": map[string]any{
-			"name":   "job_classification",
+			"name":   "job_enrichment",
 			"strict": true,
 			"schema": map[string]any{
 				"type": "object",
@@ -514,8 +586,9 @@ func classificationSchema() map[string]any {
 					"industry":   map[string]any{"type": "string", "enum": sortedKeys(industryMap)},
 					"job_type":   map[string]any{"type": "string", "enum": sortedKeys(jobTypeMap)},
 					"discipline": map[string]any{"type": "string", "enum": sortedKeys(disciplineMap)},
+					"summary":    map[string]any{"type": "string"},
 				},
-				"required":             []string{"industry", "job_type", "discipline"},
+				"required":             []string{"industry", "job_type", "discipline", "summary"},
 				"additionalProperties": false,
 			},
 		},
@@ -610,9 +683,14 @@ func parseClassification(content string, title string) (models.IndustryField, mo
 	return mapClassification(parsed.Industry, parsed.JobType, parsed.Discipline, title)
 }
 
-// classificationDescriptionSuffix appends an excerpt of the description to the
-// classification prompt when one is available.
-func classificationDescriptionSuffix(listing models.Listing) string {
+// hasDescription reports whether the listing carries description text.
+func hasDescription(listing models.Listing) bool {
+	return listing.Description != nil && strings.TrimSpace(*listing.Description) != ""
+}
+
+// enrichmentDescriptionSuffix appends an excerpt of the description to the
+// enrichment prompt when one is available.
+func enrichmentDescriptionSuffix(listing models.Listing) string {
 	if listing.Description == nil || strings.TrimSpace(*listing.Description) == "" {
 		return ""
 	}
@@ -620,79 +698,11 @@ func classificationDescriptionSuffix(listing models.Listing) string {
 	return "\nDescription: " + truncateForPrompt(*listing.Description, classificationDescriptionLimit)
 }
 
-func (s *AIParserStep) GetIndustryFieldandType(ctx context.Context, listing models.Listing) (models.Listing, error) {
-	// The classification depends only on title and company, both of which are
-	// components of the fingerprint. If a previous run already resolved all
-	// three axes for this fingerprint the answer cannot have changed.
-	if listing.IndustryField != "" && listing.Type != nil && listing.Discipline != "" {
-		atomic.AddInt32(&s.completedJobs, 1)
-		atomic.AddInt32(&s.skippedJobs, 1)
-		utils.Debug("Classification already known for %q, skipping API call.", listing.Title)
-		return listing, nil
-	}
-
-	chatRequest := ChatRequest{
-		Model:  "gpt-4o-mini",
-		Stream: false,
-		// Enough for the JSON object and no more. A truncated reply is not
-		// valid against the schema, so this must not be trimmed further.
-		MaxTokens:      100,
-		ResponseFormat: classificationSchema(),
-		Messages: []struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		}{
-			{Role: "system", Content: "You are a helpful assistant."},
-			{Role: "user", Content: "Classify the listing on three axes.\n\n" +
-				"1. INDUSTRY, the employer's sector. One of: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, RETAIL, TRANSPORTATION, OTHER_INDUSTRY.\n" +
-				"2. JOBTYPE, one of: INTERN, GRADUATE, OTHER.\n" +
-				"3. DISCIPLINE, the technical discipline of the work itself. One of:\n" +
-				"   SOFTWARE - writing or shipping software: software engineering, web, mobile, embedded, devops, cloud, platform, SRE, QA.\n" +
-				"   DATA - data science, data engineering, analytics, machine learning, AI research.\n" +
-				"   CYBER - cyber security, information security, penetration testing.\n" +
-				"   ENGINEERING - non-software engineering: civil, mechanical, electrical, chemical, mining, aerospace.\n" +
-				"   OTHER_DISCIPLINE - anything else, including consulting, finance, sales, marketing, HR, legal, supply chain, and general graduate programs with no technical component.\n\n" +
-				"Judge DISCIPLINE by the role, not the employer: a marketing role at a software company is OTHER_DISCIPLINE. If the title is generic (e.g. \"Graduate Program\") use the company and description to decide, and prefer OTHER_DISCIPLINE when the work is not clearly technical.\n\n" +
-				"Respond with a JSON object holding the keys industry, job_type and discipline.\n\nTitle: " + listing.Title +
-				"\nCompany: " + listing.Company.Name +
-				classificationDescriptionSuffix(listing)},
-		},
-	}
-
-	chatResponse, err := s.makeChatRequest(ctx, chatRequest, "GetIndustryField")
-	if err != nil {
-		return listing, err
-	}
-
-	if len(chatResponse.Choices) > 0 {
-		industryField, jobType, discipline := parseClassification(chatResponse.Choices[0].Message.Content, listing.Title)
-
-		if listing.IndustryField == "" {
-			listing.IndustryField = industryField
-		}
-
-		if listing.Type == nil {
-			listing.Type = &jobType
-		}
-
-		listing.Discipline = discipline
-	} else {
-		utils.Error("No response received from Chat.")
-	}
-
-	return listing, nil
-}
-
 // oneLinerDescriptionLimit caps how much of a description is sent for the
 // one-liner. The prompt only needs the tech stack and the projects, which sit
 // near the top of a posting; the tail is boilerplate about benefits and equal
 // opportunity that we were paying full input price to send.
-const oneLinerDescriptionLimit = 6000
-
-// maxFormattableDescription caps what is worth sending to be marked up. Beyond
-// this the round trip costs more than the formatting is worth, and the reply
-// risks running past even the model's output ceiling.
-const maxFormattableDescription = 24000
+const oneLinerDescriptionLimit = 2000
 
 // classificationDescriptionLimit is how much of the description accompanies the
 // classification prompt. The prompt asks the model to fall back to the
@@ -716,53 +726,12 @@ func truncateForPrompt(text string, limit int) string {
 	return string(runes[:limit])
 }
 
-func (s *AIParserStep) GenerateOneLinerDesc(ctx context.Context, listing models.Listing) (models.Listing, error) {
-	if listing.OneLinerDesc == nil {
-		if listing.Description == nil || strings.TrimSpace(*listing.Description) == "" {
-			atomic.AddInt32(&s.completedJobs, 1)
-			atomic.AddInt32(&s.skippedJobs, 1)
-			return listing, nil
-		}
-
-		chatRequest := ChatRequest{
-			Model:     "gpt-4o-mini",
-			Stream:    false,
-			MaxTokens: 80,
-			Messages: []struct {
-				Role    string `json:"role"`
-				Content string `json:"content"`
-			}{
-				{Role: "system", Content: "You are a helpful assistant."},
-				{Role: "user", Content: "Write one concise sentence describing this job, naming the concrete skills or tools it uses and what they are applied to. " +
-					"Prefer the form 'Apply your [skills] skills on [projects]'. If the role is not technical, describe it plainly in the same length instead of inventing a tech stack. " +
-					"Respond with only that sentence.\n\nDescription: " + truncateForPrompt(*listing.Description, oneLinerDescriptionLimit)},
-			},
-		}
-
-		chatResponse, err := s.makeChatRequest(ctx, chatRequest, "OneLinerDesc")
-		if err != nil {
-			return listing, err
-		}
-
-		if len(chatResponse.Choices) > 0 {
-			oneLinerDescStr := strings.TrimSpace(chatResponse.Choices[0].Message.Content)
-			listing.OneLinerDesc = &oneLinerDescStr
-		} else {
-			utils.Error("No response received.")
-		}
-	} else {
-		utils.Debug("One liner description already exists.")
-		atomic.AddInt32(&s.completedJobs, 1)
-		atomic.AddInt32(&s.skippedJobs, 1)
-		current := atomic.LoadInt32(&s.completedJobs)
-		utils.Log("AI Parser progress: %d/%d (%.1f%%)", current, s.totalJobs, (float64(current)/float64(s.totalJobs))*100)
-	}
-
-	return listing, nil
-}
-
 // maxCollectedErrors bounds the sample of failures kept for the returned error.
 const maxCollectedErrors = 10
+
+// operationsPerListing is how many units of work each listing represents:
+// formatting the description and enriching it.
+const operationsPerListing = 2
 
 // maxChatAttempts bounds retries per operation. The token-per-minute limit is
 // a rolling 60s window, so the attempts have to span enough time for that
@@ -813,15 +782,22 @@ func retryAfterOrBackoff(retryAfter string, attempt int) time.Duration {
 	return backoff + time.Duration(rand.Int63n(int64(time.Second)))
 }
 
+// tokensPerMinuteFromEnv reads the account's tokens-per-minute ceiling,
+// falling back to the tier this project runs on.
+func tokensPerMinuteFromEnv() int {
+	if raw := os.Getenv("OPENAI_TOKENS_PER_MINUTE"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			return parsed
+		}
+		utils.Warn("OPENAI_TOKENS_PER_MINUTE=%q is not a positive integer; using %d.", raw, defaultTokensPerMinute)
+	}
+	return defaultTokensPerMinute
+}
+
 func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequest, operationType string) (ChatResponse, error) {
 	var chatResponse ChatResponse
 
-	if err := s.acquireSemaphore(ctx); err != nil {
-		return chatResponse, fmt.Errorf("failed to acquire semaphore: %w", err)
-	}
-	defer s.releaseSemaphore()
-
-	utils.Debug("Making %s API call (concurrency: %d/%d)", operationType, len(s.semaphore), cap(s.semaphore))
+	utils.Debug("Making %s API call", operationType)
 
 	requestBody, err := json.Marshal(chatRequest)
 	if err != nil {
@@ -834,7 +810,39 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 	client := &http.Client{Timeout: 2 * time.Minute}
 
 	var resp *http.Response
+
+	promptChars := 0
+	for _, m := range chatRequest.Messages {
+		promptChars += len(m.Content)
+	}
+	cost := estimateTokens(promptChars, chatRequest.MaxTokens)
+
 	for attempt := 1; attempt <= maxChatAttempts; attempt++ {
+		// Wait for room in the token window, then take a concurrency slot.
+		//
+		// The order matters. Waiting for tokens while holding a slot parks one
+		// of only six slots for as long as a minute, so the other workers
+		// cannot even queue and throughput collapses to whatever those parked
+		// goroutines eventually do. Budget first, slot second: the budget
+		// paces the run and the semaphore only caps requests actually in
+		// flight.
+		//
+		// This sits inside the retry loop because a retry spends tokens too.
+		// Charging only the first attempt would let a run that is retrying
+		// heavily drift back over the limit, which is the failure this is
+		// meant to prevent.
+		if s.budget != nil {
+			if err := s.budget.Acquire(ctx, cost); err != nil {
+				return chatResponse, err
+			}
+		}
+		// The slot is scoped to this attempt: taken here, handed back the
+		// moment the response headers are in, whether that is a success, a
+		// failure or a 429 about to be retried.
+		if err := s.acquireSemaphore(ctx); err != nil {
+			return chatResponse, fmt.Errorf("failed to acquire semaphore: %w", err)
+		}
+
 		// Build a fresh request per attempt. Reusing one request and cloning it
 		// does not rewind the body: http.Request.Clone copies the reader as-is,
 		// so every retry after the first sent an empty body against a
@@ -842,12 +850,14 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 		// outright. Rate limits were therefore fatal rather than retried.
 		req, err := http.NewRequestWithContext(ctx, "POST", openaiEndpoint, bytes.NewReader(requestBody))
 		if err != nil {
+			s.releaseSemaphore()
 			return chatResponse, err
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 
 		r, err := client.Do(req)
+		s.releaseSemaphore()
 		if err != nil {
 			return chatResponse, err
 		}
