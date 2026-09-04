@@ -306,7 +306,7 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 	}
 
 	// Report the failure count alongside a sample. Listings that failed keep
-	// their zero values, which the upload step now leaves alone rather than
+	// their zero values, which the upload step leaves alone rather than
 	// writing over what a previous run stored.
 	var finalErr error
 	for _, err := range errs {
@@ -317,7 +317,19 @@ func (s *AIParserStep) Process(ctx context.Context, listings []models.Listing) (
 		}
 	}
 
-	return parsedListings, fmt.Errorf("%d AI operations failed: %w", failed, finalErr)
+	// A handful of failures must not discard the run. Returning an error here
+	// aborts the pipeline, so board scoring and the upload never happen and
+	// every listing is thrown away -- three rate limited one liners out of
+	// 1971 operations were enough to lose a whole scrape. Only give up when
+	// enough of the run failed that the board would be built from mostly
+	// unclassified listings.
+	if !runIsBroken(failed, int(s.totalJobs)) {
+		utils.Warn("AI Parser: %d/%d operations failed, continuing with what succeeded: %v",
+			failed, s.totalJobs, finalErr)
+		return parsedListings, nil
+	}
+
+	return parsedListings, fmt.Errorf("%d/%d AI operations failed: %w", failed, s.totalJobs, finalErr)
 }
 
 func (s *AIParserStep) acquireSemaphore(ctx context.Context) error {
@@ -752,7 +764,30 @@ func (s *AIParserStep) GenerateOneLinerDesc(ctx context.Context, listing models.
 // maxCollectedErrors bounds the sample of failures kept for the returned error.
 const maxCollectedErrors = 10
 
-const maxChatAttempts = 5
+// maxChatAttempts bounds retries per operation. The token-per-minute limit is
+// a rolling 60s window, so the attempts have to span enough time for that
+// window to drain; five one-second waits gave up after five seconds and failed
+// while the window was still full.
+const maxChatAttempts = 8
+
+// maxFailedOperationPercent is the share of AI operations that may fail before
+// the run is treated as broken rather than merely incomplete.
+const maxFailedOperationPercent = 10
+
+// runIsBroken reports whether enough of a run failed that its output should be
+// thrown away rather than uploaded. Below the threshold the successful
+// listings are still worth keeping: the ones that failed keep their zero
+// values, and the upload step leaves stored fields alone rather than
+// overwriting them with blanks.
+func runIsBroken(failed, total int) bool {
+	if failed == 0 {
+		return false
+	}
+	if total <= 0 {
+		return true
+	}
+	return failed*100 > total*maxFailedOperationPercent
+}
 
 // retryAfterOrBackoff prefers the server's own Retry-After hint and otherwise
 // backs off exponentially with jitter, so a burst of goroutines that all get
@@ -760,7 +795,14 @@ const maxChatAttempts = 5
 func retryAfterOrBackoff(retryAfter string, attempt int) time.Duration {
 	if retryAfter != "" {
 		if seconds, err := strconv.ParseFloat(retryAfter, 64); err == nil && seconds > 0 {
-			return time.Duration(seconds * float64(time.Second))
+			// Honour the hint, but still scale it by the attempt and add
+			// jitter. OpenAI answers a saturated token-per-minute window with
+			// a flat "Retry-After: 1", so obeying it literally puts every
+			// worker back on the wire at the same instant, against a window
+			// that is still full. That is the lockstep this function exists
+			// to avoid.
+			hint := time.Duration(seconds * float64(time.Second))
+			return hint*time.Duration(attempt) + time.Duration(rand.Int63n(int64(time.Second)))
 		}
 	}
 

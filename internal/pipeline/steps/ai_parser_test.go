@@ -649,3 +649,56 @@ func TestCompleteCachedClassificationIsApplied(t *testing.T) {
 		t.Error("a complete cached classification must be reused in full")
 	}
 }
+
+// A saturated token-per-minute window makes OpenAI answer with a flat
+// "Retry-After: 1". Obeying that literally sent every worker back at the same
+// instant, so the waits have to grow and be jittered even when the hint exists.
+func TestRetryAfterHintIsScaledAndJittered(t *testing.T) {
+	const hint = "1"
+
+	first := retryAfterOrBackoff(hint, 1)
+	if first < time.Second || first >= 2*time.Second {
+		t.Fatalf("attempt 1 wait = %s, want [1s, 2s)", first)
+	}
+
+	later := retryAfterOrBackoff(hint, 4)
+	if later < 4*time.Second {
+		t.Fatalf("attempt 4 wait = %s, want at least 4s", later)
+	}
+
+	// Jitter has to actually vary, or the workers stay in lockstep.
+	seen := make(map[time.Duration]bool)
+	for i := 0; i < 50; i++ {
+		seen[retryAfterOrBackoff(hint, 1)] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("Retry-After waits never varied across 50 calls, workers stay in lockstep")
+	}
+}
+
+// Three rate limited operations out of ~2000 used to abort the pipeline, which
+// discarded every listing in the run. A small number of failures must leave the
+// successful listings intact so board scoring and the upload still run.
+func TestRunIsBroken(t *testing.T) {
+	cases := []struct {
+		name   string
+		failed int
+		total  int
+		want   bool
+	}{
+		{name: "clean run", failed: 0, total: 1971, want: false},
+		{name: "the run that lost a whole scrape", failed: 3, total: 1971, want: false},
+		{name: "at the threshold", failed: 197, total: 1971, want: false},
+		{name: "past the threshold", failed: 198, total: 1971, want: true},
+		{name: "exhausted quota fails everything", failed: 1971, total: 1971, want: true},
+		{name: "unknown total is not trusted", failed: 1, total: 0, want: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := runIsBroken(tc.failed, tc.total); got != tc.want {
+				t.Fatalf("runIsBroken(%d, %d) = %v, want %v", tc.failed, tc.total, got, tc.want)
+			}
+		})
+	}
+}
