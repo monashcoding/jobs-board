@@ -278,3 +278,19 @@ func TestNeedsWrite(t *testing.T) {
 		})
 	}
 }
+
+// Board scoring only writes board_eligible for the listings in the run it is
+// given, so a listing the scraper stops seeing keeps its last flag forever. A
+// board built weeks earlier stayed live under a cap added since -- 83 documents
+// eligible after a run that marked 37, 27 of the stragglers one employer.
+// Retiring a listing has to retire it from the board too.
+func TestUnseenListingLosesBoardEligibility(t *testing.T) {
+	update := unseenListingUpdate()
+
+	if update["outdated"] != true {
+		t.Error("a listing the scraper no longer sees must be marked outdated")
+	}
+	if eligible, ok := update["board_eligible"]; !ok || eligible != false {
+		t.Errorf("a retired listing must lose board eligibility, got %v", update["board_eligible"])
+	}
+}

@@ -189,6 +189,11 @@ func buildListingSet(listing models.Listing, fingerprint string, version string,
 // from itself and defeat the whole comparison.
 var volatileSetKeys = map[string]bool{"updated_at": true}
 
+// unseenListingUpdate is what is written to a listing this run did not see.
+func unseenListingUpdate() bson.M {
+	return bson.M{"outdated": true, "board_eligible": false}
+}
+
 // ContentHash fingerprints what this run would write for a listing. Documents
 // whose hash is unchanged are skipped entirely rather than rewritten with a
 // fresh updated_at.
@@ -323,9 +328,17 @@ func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listi
 		seenFingerprints[i] = GenerateListingFingerprint(listing)
 	}
 
+	// Eligibility is cleared alongside outdated. Board scoring only ever writes
+	// board_eligible for the listings in the run it is given, so a listing the
+	// scraper stops seeing keeps whatever flag it was last given -- forever. A
+	// board built weeks ago therefore stayed live under a cap that had since
+	// been added: 83 documents were eligible after a run that marked 37, and
+	// 27 of the stragglers were one employer, which is the exact pile-up the
+	// per-employer cap exists to prevent. A listing that is gone from the
+	// source cannot belong on the board.
 	_, err := activeColl.UpdateMany(ctx,
 		bson.M{"fingerprint": bson.M{"$nin": seenFingerprints}},
-		bson.M{"$set": bson.M{"outdated": true}})
+		bson.M{"$set": unseenListingUpdate()})
 	if err != nil {
 		return nil, fmt.Errorf("failed to mark existing jobs: %w", err)
 	}
