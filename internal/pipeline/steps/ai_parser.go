@@ -422,7 +422,10 @@ func (s *AIParserStep) FixDescriptionFormat(ctx context.Context, listing models.
 	// block structure to detect, but running it through the markup path would
 	// escape those tags and render them to the board as literal text.
 	if htmlTagPattern.MatchString(cleaned) {
-		*listing.Description = cleaned
+		// Cleaned again afterwards: the sanitiser decodes entities, so a source
+		// writing "&nbsp;" becomes a literal non-breaking space that the first
+		// pass could not see.
+		*listing.Description = CleanDescription(SanitiseDescriptionHTML(cleaned))
 		return listing, nil
 	}
 
