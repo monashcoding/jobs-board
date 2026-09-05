@@ -5,11 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -244,16 +242,6 @@ func (s *AirwallexScraper) isRelevantJob(job jobPosting) bool {
 		strings.Contains(lower, "grad")
 }
 
-var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
-
-// stripHTML removes HTML tags and decodes HTML entities.
-func stripHTML(raw string) string {
-	stripped := htmlTagRe.ReplaceAllString(raw, " ")
-	decoded := html.UnescapeString(stripped)
-	// Collapse multiple spaces/newlines.
-	return strings.Join(strings.Fields(decoded), " ")
-}
-
 func (s *AirwallexScraper) convertToListing(job jobPosting, details *jobDetailResponse) models.Listing {
 	var jobType models.JobType
 	lower := strings.ToLower(job.Title)
@@ -267,9 +255,20 @@ func (s *AirwallexScraper) convertToListing(job jobPosting, details *jobDetailRe
 	companyWebsite := s.URL()
 	logo := "https://app.ashbyhq.com/api/images/org-theme-wordmark/6e23f7f7-cd7d-4ce0-9c98-a110a190ef11/189f2f03-7a70-4685-8fa1-542ff3f2df0e/ad10e6e7-1ce7-4bb6-93ea-5559a187f21b.png"
 
+	// Ashby returns the description as HTML, and it is kept as HTML.
+	//
+	// It used to be flattened to text: tags became spaces and then every run of
+	// whitespace was collapsed to a single space, so the paragraphs, headings
+	// and lists were gone and the description reached the board as one
+	// unbroken block. Nothing downstream could recover that, because the
+	// markup step reads line breaks and bullet markers and both had been
+	// collapsed away.
+	//
+	// Prosple, Atlassian and Jane Street all pass their own HTML through and
+	// render well; this is the same treatment.
 	var description *string
 	if details != nil && details.Data.JobPosting.DescriptionHtml != "" {
-		desc := stripHTML(details.Data.JobPosting.DescriptionHtml)
+		desc := details.Data.JobPosting.DescriptionHtml
 		description = &desc
 	}
 

@@ -100,7 +100,7 @@ func (s *LinkedInScraper) processJob(ctx context.Context, job Job) (models.Listi
 	}
 
 	// Extract job description
-	description := doc.Find("div.show-more-less-html__markup").Text()
+	description := descriptionText(doc.Find("div.show-more-less-html__markup"))
 
 	// Check for external apply URL first
 	if externalLink := doc.Find("a.sign-up-modal__company_webiste"); externalLink.Length() > 0 {
@@ -152,4 +152,30 @@ func logoPtr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// descriptionText reads a description out of LinkedIn's markup as plain text
+// that still carries its structure.
+//
+// goquery's Text() concatenates text nodes and nothing else: every tag simply
+// disappears, and no separator takes its place. LinkedIn serves the description
+// minified, with no whitespace between tags, so the result was one unbroken run
+// of characters with words fused across every boundary -- "Description:Job
+// Requisition ID" and "operational resilience.What will your typical day look
+// like?" are both real examples from the board.
+//
+// That was survivable while an AI call re-imposed the structure downstream,
+// because a model can infer where sections start from run-on prose. Deriving
+// the markup locally cannot: it reads line breaks and bullet markers, and Text()
+// had already destroyed both. Every LinkedIn listing came out as a single
+// paragraph with no headings and no lists.
+//
+// So the block boundaries are written back in before the text is taken, as the
+// line breaks and "- " markers the markup step is looking for.
+func descriptionText(sel *goquery.Selection) string {
+	sel.Find("br").AfterHtml("\n")
+	sel.Find("li").BeforeHtml("\n- ")
+	sel.Find("p, div, section, h1, h2, h3, h4, h5, h6, ul, ol, table, tr").BeforeHtml("\n\n")
+
+	return sel.Text()
 }

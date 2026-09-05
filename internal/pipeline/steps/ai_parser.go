@@ -384,9 +384,15 @@ var blockTagPattern = regexp.MustCompile(`(?i)<(p|div|h[1-6]|ul|ol|li|br|table|s
 var htmlTagPattern = regexp.MustCompile(`(?i)</?[a-z][a-z0-9]*(\s[^<>]*)?/?>`)
 
 // invisibleRunePattern matches the whitespace-lookalike runes that leak in from
-// scraped pages: non-breaking space, narrow no-break space, zero-width space,
-// zero-width non-joiner/joiner, and the BOM.
-var invisibleRunePattern = regexp.MustCompile("[\u00a0\u202f\u2007\u200b\u200c\u200d\ufeff]")
+// scraped pages: non-breaking space, narrow no-break space, figure space,
+// zero-width space, and the BOM.
+//
+// The zero-width joiner and non-joiner used to be in here and deliberately are
+// not any more. They are not whitespace lookalikes, they are meaningful: the
+// joiner binds an emoji sequence into a single glyph, so replacing it with a
+// space tore "\U0001f469\u200d\U0001f4bb" into two glyphs on the board, and the
+// non-joiner is load-bearing in Persian and several Indic scripts.
+var invisibleRunePattern = regexp.MustCompile("[\u00a0\u202f\u2007\u200b\ufeff]")
 
 // CleanDescription strips the invisible junk the old LLM prompt was asked to
 // remove. This is a deterministic substitution, so paying a model to echo a

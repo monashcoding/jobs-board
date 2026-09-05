@@ -40,7 +40,7 @@ func MarkupDescription(text string) string {
 	blocks := splitBlocks(text)
 
 	var out strings.Builder
-	for _, block := range blocks {
+	for bi, block := range blocks {
 		lines := block
 		for len(lines) > 0 {
 			if bulletPattern.MatchString(lines[0]) {
@@ -57,10 +57,28 @@ func MarkupDescription(text string) string {
 				continue
 			}
 
+			// What this line introduces is the next line of the block, or
+			// failing that the start of the next block. A heading is very often
+			// the whole of its own block -- text derived from HTML has a break
+			// after every element, so every heading is alone in one -- and
+			// looking only within the block could never see what it headed.
+			next := ""
+			if len(lines) > 1 {
+				next = lines[1]
+			} else if strings.HasSuffix(strings.TrimSpace(lines[0]), ":") &&
+				bi+1 < len(blocks) && len(blocks[bi+1]) > 0 {
+				// A line alone in its block has to announce itself with a colon.
+				// Text derived from HTML puts every line in a block of its own,
+				// so the looser "short capitalised line" test would promote
+				// every one-line fact it met -- "Job Requisition ID: 41249" --
+				// into a section heading.
+				next = blocks[bi+1][0]
+			}
+
 			// A short unpunctuated line directly above more content is a
 			// heading. The same line standing alone at the end is just a short
 			// paragraph, so it needs something to head.
-			if len(lines) > 1 && isHeading(lines[0], lines[1]) {
+			if isHeading(lines[0], next) {
 				out.WriteString("<h3>" + html.EscapeString(strings.TrimSpace(lines[0])) + "</h3>")
 				lines = lines[1:]
 				continue
@@ -101,6 +119,14 @@ func isHeading(line string, next string) bool {
 		return false
 	}
 
+	// A heading has to introduce something. A line with nothing after it is the
+	// end of the description, whatever punctuation it carries -- "Apply here:"
+	// closing a posting is a sentence, not a section.
+	nextTrimmed := strings.TrimSpace(next)
+	if nextTrimmed == "" {
+		return false
+	}
+
 	// A colon is an explicit heading marker and needs no other evidence.
 	if strings.HasSuffix(trimmed, ":") {
 		return true
@@ -121,12 +147,8 @@ func isHeading(line string, next string) bool {
 		return false
 	}
 
-	// A heading introduces something. If what follows continues in lower case
-	// it is a wrapped sentence, not a new section.
-	nextTrimmed := strings.TrimSpace(next)
-	if nextTrimmed == "" {
-		return false
-	}
+	// If what follows continues in lower case it is a wrapped sentence, not a
+	// new section.
 	if bulletPattern.MatchString(nextTrimmed) {
 		return true
 	}

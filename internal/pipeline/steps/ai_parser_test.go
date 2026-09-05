@@ -882,3 +882,25 @@ func TestMakeChatRequestDoesNotCountTheOperationItself(t *testing.T) {
 		t.Errorf("makeChatRequest must not advance the progress count, completedJobs = %d", got)
 	}
 }
+
+// The zero-width joiner is not whitespace junk, it is what binds an emoji
+// sequence into one glyph. Replacing it with a space tore the sequence into
+// separate glyphs on the board; the non-joiner is load-bearing in Persian and
+// several Indic scripts for the same reason.
+func TestCleanDescriptionKeepsMeaningfulJoiners(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"emoji joined by a zero width joiner", "Meet the team \U0001f469‍\U0001f4bb today"},
+		{"zero width non joiner between letters", "می‌خواهم"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CleanDescription(tc.input); got != tc.input {
+				t.Errorf("CleanDescription(%q) = %q, want it unchanged", tc.input, got)
+			}
+		})
+	}
+}

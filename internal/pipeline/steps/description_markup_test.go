@@ -167,3 +167,39 @@ func TestAngleBracketsInProseAreNotMistakenForHTML(t *testing.T) {
 		t.Fatalf("the literal < was not escaped: %s", *got.Description)
 	}
 }
+
+// Text derived from HTML puts a break after every element, so a heading is
+// alone in its own block with nothing after it to look at. Detection that only
+// ever looked within a block could not see what the heading introduced, and
+// every LinkedIn description came out as an unbroken run of paragraphs.
+func TestAHeadingAloneInItsBlockIsStillAHeading(t *testing.T) {
+	got := MarkupDescription("What you will do:\n\nBuild and maintain the platform.")
+
+	if !strings.Contains(got, "<h3>What you will do:</h3>") {
+		t.Errorf("a colon-terminated line introducing the next block is a heading: %q", got)
+	}
+}
+
+// The looser test -- a short capitalised line above another capitalised line --
+// is safe within a block but not across them, where every one-line fact would
+// qualify. "Job Requisition ID: 41249" is prose, not a section heading.
+func TestAOneLineFactIsNotPromotedToAHeading(t *testing.T) {
+	got := MarkupDescription("Job Requisition ID: 41249\n\nWhat will your day look like?")
+
+	if strings.Contains(got, "<h3>Job Requisition ID: 41249</h3>") {
+		t.Errorf("a one-line fact must stay a paragraph: %q", got)
+	}
+	if !strings.Contains(got, "<p>Job Requisition ID: 41249</p>") {
+		t.Errorf("expected the fact as a paragraph: %q", got)
+	}
+}
+
+// A heading needs something to head. The last line of a description has
+// nothing after it, whatever punctuation it carries.
+func TestATrailingColonLineAtTheEndIsNotAHeading(t *testing.T) {
+	got := MarkupDescription("Build the platform.\n\nApply here:")
+
+	if strings.Contains(got, "<h3>") {
+		t.Errorf("a heading with nothing after it is just a paragraph: %q", got)
+	}
+}
