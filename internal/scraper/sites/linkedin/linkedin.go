@@ -14,9 +14,24 @@ import (
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
+// JobCheckpoint remembers listings across attempts so an interrupted scrape can
+// pick up where it stopped. It is an interface rather than the concrete store so
+// the scraper keeps working without one.
+type JobCheckpoint interface {
+	Seen(key string) (models.Listing, bool)
+	Record(ctx context.Context, key string, listing models.Listing)
+}
+
 type LinkedInScraper struct {
-	unblocker unblocker.Service
-	jobLimit  int
+	unblocker  unblocker.Service
+	jobLimit   int
+	checkpoint JobCheckpoint
+}
+
+// SetCheckpoint gives the scraper somewhere to bank each job it fetches. Without
+// one the scraper simply starts from the beginning every time.
+func (s *LinkedInScraper) SetCheckpoint(c JobCheckpoint) {
+	s.checkpoint = c
 }
 
 func NewLinkedInScraper() *LinkedInScraper {
@@ -62,8 +77,6 @@ func (s *LinkedInScraper) SetJobLimit(limit int) {
 }
 
 func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) {
-	var listings []models.Listing
-
 	jobs, err := s.getAllJobs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all jobs: %w", err)
@@ -71,21 +84,62 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 
 	utils.Log("Found %d jobs in search results. Starting to parse individual jobs.", len(jobs))
 
+	return s.processJobs(ctx, jobs), nil
+}
+
+// reachedJobLimit reports whether enough listings have been gathered.
+func (s *LinkedInScraper) reachedJobLimit(gathered int) bool {
+	if s.jobLimit > 0 && gathered >= s.jobLimit {
+		utils.Log("Reached job limit (%d), stopping job processing", s.jobLimit)
+		return true
+	}
+	return false
+}
+
+// processJobs turns each search result into a listing, reusing anything an
+// earlier attempt already fetched.
+func (s *LinkedInScraper) processJobs(ctx context.Context, jobs []Job) []models.Listing {
+	var listings []models.Listing
+
 	// Process jobs with job limit in mind
+	resumed := 0
 	for i, job := range jobs {
+		// A job already fetched by an earlier attempt costs a map lookup rather
+		// than a proxied page load. This is the bulk of a LinkedIn scrape: 839
+		// individual job pages, which is why a run that died at 430 of them used
+		// to throw away a quarter of an hour of work.
+		if s.checkpoint != nil {
+			if listing, ok := s.checkpoint.Seen(job.ID); ok {
+				listings = append(listings, listing)
+				resumed++
+				// A recovered listing counts against the limit exactly as a
+				// freshly fetched one does, or a resumed run would fetch past
+				// the limit it was given.
+				if s.reachedJobLimit(len(listings)) {
+					break
+				}
+				continue
+			}
+		}
+
 		utils.Log("Processing job %d/%d with ID %s", i+1, len(jobs), job.ID)
 		listing, err := s.processJob(ctx, job)
 		if err != nil {
 			utils.Error("Failed to process job %s: %v", job.ID, err)
 			continue
 		}
+		if s.checkpoint != nil {
+			s.checkpoint.Record(ctx, job.ID, listing)
+		}
 		listings = append(listings, listing)
 
-		// Check if we've reached the job limit
-		if s.jobLimit > 0 && len(listings) >= s.jobLimit {
-			utils.Log("Reached job limit (%d), stopping job processing", s.jobLimit)
+		if s.reachedJobLimit(len(listings)) {
 			break
 		}
+	}
+
+	if resumed > 0 {
+		utils.Success("Recovered %d job pages from an earlier attempt, refetched %d.", resumed, len(listings)-resumed)
 	}
 
 	// Trim the list to match our target exactly if needed
@@ -94,7 +148,7 @@ func (s *LinkedInScraper) Scrape(ctx context.Context) ([]models.Listing, error) 
 		utils.Log("Trimmed listings to match job limit exactly (%d)", s.jobLimit)
 	}
 
-	return listings, nil
+	return listings
 }
 
 func (s *LinkedInScraper) getAllJobs(ctx context.Context) ([]Job, error) {

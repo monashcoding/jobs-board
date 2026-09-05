@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/monashcoding/mploy-golang-core/internal/checkpoint"
 	"github.com/monashcoding/mploy-golang-core/internal/config"
 	"github.com/monashcoding/mploy-golang-core/internal/database"
 	"github.com/monashcoding/mploy-golang-core/internal/models"
@@ -81,17 +83,51 @@ func RunScraper() {
 	// Initialize pipeline steps
 	pipelineSteps := initializePipelineSteps(mongodb, mvpUpload)
 
+	// Checkpoints let an interrupted run resume. A scrape is ~18 minutes of
+	// proxied fetches and any number of things end it early -- a redeploy
+	// replacing the container, an OOM, a proxy outage -- and until now every one
+	// of those cost the entire run.
+	checkpoints := checkpoint.NewStore(mongodb)
+	if err := checkpoints.EnsureIndexes(ctx); err != nil {
+		utils.Warn("Checkpoints will not expire on their own: %v", err)
+	}
+
 	// Collect all listings from active scrapers
 	var allListings []models.Listing
 
 	for _, s := range scrapers {
 		if config.ShouldRunScraper(s.Name()) {
+			resume := checkpoints.For(ctx, s.Name())
+
+			// A scraper that finished in an earlier attempt is not run again;
+			// its listings are taken as they were.
+			if resume.Complete() {
+				utils.Custom("Scraper %s recovered %d listings from a checkpoint.", s.Name(), len(resume.Listings()))
+				allListings = append(allListings, resume.Listings()...)
+				continue
+			}
+
+			// Scrapers that know how to resume mid-way take the handle and bank
+			// each item as they go. The rest start over, and have their finished
+			// output checkpointed below so a later attempt skips them entirely.
+			resumable, banksItself := s.(interface{ SetCheckpoint(linkedin.JobCheckpoint) })
+			if banksItself {
+				resumable.SetCheckpoint(resume)
+			}
+
 			utils.Log("Running scraper %s...", s.Name())
 			listings, err := s.Scrape(ctx)
 			if err != nil {
 				utils.Error("Error in %s scraper: %v", s.Name(), err)
 				continue
 			}
+
+			if !banksItself {
+				for i, listing := range listings {
+					resume.Record(ctx, strconv.Itoa(i), listing)
+				}
+			}
+			resume.MarkComplete(ctx)
 
 			utils.Success("Finished scraper %s with %d listings.", s.Name(), len(listings))
 			utils.Custom("Scraper %s returned %d listings.", s.Name(), len(listings))
@@ -111,6 +147,14 @@ func RunScraper() {
 	// Run the pipeline
 	if _, err := processingPipeline.Run(ctx, allListings); err != nil {
 		utils.Error("Error processing listings: %v", err)
+	} else {
+		// Only once the pipeline has uploaded does resuming stop being useful
+		// and start being wrong: the listings are banked, and a resumed run
+		// would scrape them a second time. A failed pipeline keeps them, so a
+		// rerun does not have to scrape the whole day again to retry the upload.
+		if err := checkpoints.Clear(ctx); err != nil {
+			utils.Warn("Failed to clear checkpoints; the next run may resume from them: %v", err)
+		}
 	}
 
 	utils.Success("Pipelines completed.")
