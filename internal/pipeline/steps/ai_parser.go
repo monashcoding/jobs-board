@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -710,7 +711,35 @@ func enrichmentDescriptionSuffix(listing models.Listing) string {
 		return ""
 	}
 
-	return "\nDescription: " + truncateForPrompt(*listing.Description, classificationDescriptionLimit)
+	return "\nDescription: " + truncateForPrompt(
+		descriptionForPrompt(*listing.Description), classificationDescriptionLimit)
+}
+
+// promptTagPattern matches an HTML tag for removal from a prompt.
+var promptTagPattern = regexp.MustCompile(`(?s)<[^>]*>`)
+
+// descriptionForPrompt reduces a description to the words the model is being
+// asked about.
+//
+// Four of the six sources return their descriptions as HTML and it is stored
+// that way, so the markup was being sent to OpenAI along with the text. Across
+// the scraped corpus, 9% of the characters inside the prompt's description
+// budget were tags. That is paid for twice over: once on the bill, and again on
+// quality, because the description is capped at classificationDescriptionLimit
+// and every character of markup displaces a character of the posting the model
+// is meant to read. Classification and the one-liner both want prose.
+//
+// Tags become a space rather than nothing. Removing them outright fuses the
+// words either side -- "engineering.Apply now" -- which is exactly the defect
+// that made the board unreadable, and there is no reason to feed the model a
+// mangled version of the same mistake.
+func descriptionForPrompt(description string) string {
+	text := promptTagPattern.ReplaceAllString(description, " ")
+	text = html.UnescapeString(text)
+
+	// Whitespace is collapsed because the prompt has no use for layout, and
+	// leaving it in would spend the budget on blank lines.
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // oneLinerDescriptionLimit caps how much of a description is sent for the

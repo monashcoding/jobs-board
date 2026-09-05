@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -904,3 +905,94 @@ func TestCleanDescriptionKeepsMeaningfulJoiners(t *testing.T) {
 		})
 	}
 }
+
+// Four of the six sources store their descriptions as HTML, so the markup was
+// going to OpenAI with the text -- paid for on the bill, and again on quality,
+// since it displaces real content inside the prompt's description cap.
+func TestDescriptionForPromptRemovesMarkup(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "block tags become word boundaries",
+			input: "<p>We build payment systems.</p><p>Apply now.</p>",
+			want:  "We build payment systems. Apply now.",
+		},
+		{
+			name:  "list items do not fuse together",
+			input: "<ul><li>Monitor health</li><li>Tune queries</li></ul>",
+			want:  "Monitor health Tune queries",
+		},
+		{
+			name:  "inline tags do not split a sentence",
+			input: "<p>We use <strong>Go</strong> and Kubernetes.</p>",
+			want:  "We use Go and Kubernetes.",
+		},
+		{
+			name:  "entities are decoded",
+			input: "<p>Research &amp; development, 5&nbsp;days.</p>",
+			want:  "Research & development, 5 days.",
+		},
+		{
+			name:  "layout whitespace is collapsed",
+			input: "<p>Line one</p>\n\n\n   <p>Line two</p>",
+			want:  "Line one Line two",
+		},
+		{
+			name:  "plain text passes through unchanged",
+			input: "Turn on notifications for nib's Graduate Jobs.",
+			want:  "Turn on notifications for nib's Graduate Jobs.",
+		},
+		{
+			name:  "a multi-line tag is still a tag",
+			input: "<a\n  href=\"https://example.com\">our portal</a> opens Friday.",
+			want:  "our portal opens Friday.",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := descriptionForPrompt(tc.input); got != tc.want {
+				t.Errorf("descriptionForPrompt(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// Removing tags outright would fuse the words either side of them, which is the
+// same defect that made the board unreadable. The model should not be handed a
+// mangled description just because it cannot complain about it.
+func TestDescriptionForPromptDoesNotFuseWords(t *testing.T) {
+	got := descriptionForPrompt("<p>Improves operational resilience.</p><p>What will your day look like?</p>")
+
+	if strings.Contains(got, "resilience.What") {
+		t.Errorf("words fused across a tag boundary: %q", got)
+	}
+}
+
+// The cap is what the description costs and what the model gets to read. Markup
+// inside it is budget spent on nothing.
+func TestPromptBudgetIsSpentOnProseNotMarkup(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 200; i++ {
+		b.WriteString(fmt.Sprintf(`<p class="mb-4 text-sm leading-relaxed">Sentence number %d.</p>`, i))
+	}
+	listing := models.Listing{Description: ptr(b.String())}
+
+	suffix := enrichmentDescriptionSuffix(listing)
+
+	// With the markup gone, far more sentences fit inside the same cap.
+	sentences := strings.Count(suffix, "Sentence number")
+	raw := truncateForPrompt(b.String(), classificationDescriptionLimit)
+	if rawSentences := strings.Count(raw, "Sentence number"); sentences <= rawSentences {
+		t.Errorf("stripping markup should fit more of the posting in the same budget: %d vs %d",
+			sentences, rawSentences)
+	}
+	if strings.Contains(suffix, "<p") || strings.Contains(suffix, "class=") {
+		t.Errorf("markup reached the prompt: %q", suffix[:200])
+	}
+}
+
+func ptr(s string) *string { return &s }
