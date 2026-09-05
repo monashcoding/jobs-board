@@ -23,11 +23,45 @@ type service struct {
 	client         *http.Client
 }
 
+// requestTimeout bounds a single fetch, headers and body together.
+//
+// The client used to have no timeout at all and the requests never carried a
+// context, so a proxied fetch that stopped responding hung the whole scrape
+// with nothing able to interrupt it -- not the pipeline's cancel, not SIGTERM.
+// A minute is far longer than any job page needs and still lets a run finish.
+const requestTimeout = 60 * time.Second
+
+// proxyContextKey carries the proxy chosen for one request to the shared
+// transport's Proxy hook.
+type proxyContextKey struct{}
+
 // NewService creates a new unblocker service
 func NewService(config Config) (Service, error) {
+	// One transport for the whole service, not one per request.
+	//
+	// Each request used to build its own http.Transport and assign it to the
+	// shared client. A transport owns a connection pool and the goroutines
+	// serving it, and nothing ever closed the old ones, so a long scrape left
+	// hundreds of them alive holding idle proxy connections -- leaking memory,
+	// file descriptors and goroutines the further into a run it got. Resolving
+	// the proxy per request instead keeps one pool, which is also the only way
+	// the idle limits below mean anything.
+	transport := &http.Transport{
+		Proxy: func(r *http.Request) (*url.URL, error) {
+			proxyURL, _ := r.Context().Value(proxyContextKey{}).(*url.URL)
+			return proxyURL, nil
+		},
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
 	s := &service{
 		config: config,
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout:   requestTimeout,
+			Transport: transport,
+		},
 	}
 
 	// Initialize enabled features
@@ -146,6 +180,12 @@ func (s *service) rotateProxy(ctx context.Context) {
 // executeRequest handles the actual execution of the request with all middleware
 func (s *service) executeRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
 	utils.Log("Making Request: %s %s", req.Method, req.URL.String())
+
+	// Bind the caller's context to the request here rather than at each of the
+	// scrapers' call sites, so cancelling the pipeline aborts whatever is in
+	// flight and any scraper added later inherits that for free.
+	req = req.WithContext(ctx)
+
 	var unblockerInfo []string
 
 	// Apply rate limiting if enabled
@@ -211,10 +251,8 @@ func (s *service) executeRequest(ctx context.Context, req *http.Request) (*http.
 			sessionID = strings.Split(parts[1], "-")[0]
 		}
 
-		transport := &http.Transport{
-			Proxy: http.ProxyURL(proxyUrlParsed),
-		}
-		s.client.Transport = transport
+		// The shared transport reads this back out in its Proxy hook.
+		req = req.WithContext(context.WithValue(req.Context(), proxyContextKey{}, proxyUrlParsed))
 		unblockerInfo = append(unblockerInfo, fmt.Sprintf("[PROXY] Session ID %s", sessionID))
 	}
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // BrightDataWhitelistRequest is the payload for the BrightData whitelist API
@@ -70,8 +71,10 @@ func WhitelistCurrentIP() error {
 	req.Header.Set("Authorization", "Bearer "+apiToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	// Make request
-	client := &http.Client{}
+	// Make request. The timeout matters: this runs before the pipeline starts
+	// and Fatals on failure, so an unbounded call here hangs startup outright
+	// with nothing logged after it.
+	client := &http.Client{Timeout: brightDataTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to make HTTP request: %w", err)
@@ -88,6 +91,15 @@ func WhitelistCurrentIP() error {
 }
 
 // GetPublicIP retrieves the public IP address using a third-party API
+// brightDataTimeout bounds the calls made before the pipeline starts. These ran
+// on clients with no timeout, so a provider that accepted the connection and
+// then went quiet hung the scraper at startup indefinitely.
+const brightDataTimeout = 15 * time.Second
+
+// ipLookupClient is bounded so one unresponsive provider cannot stop the loop
+// below from trying the next one -- the whole point of having four.
+var ipLookupClient = &http.Client{Timeout: brightDataTimeout}
+
 func GetPublicIP() (string, error) {
 	// List of IP API services to try
 	ipAPIs := []string{
@@ -99,7 +111,7 @@ func GetPublicIP() (string, error) {
 
 	var lastErr error
 	for _, api := range ipAPIs {
-		resp, err := http.Get(api)
+		resp, err := ipLookupClient.Get(api)
 		if err != nil {
 			lastErr = err
 			Log("Failed to get IP from %s: %v", api, err)
