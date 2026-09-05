@@ -503,6 +503,14 @@ type enrichmentResponse struct {
 // off the same text, so asking for them together halves the number of requests
 // and removes the duplicated description entirely.
 func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing) (models.Listing, error) {
+	// One listing is one enrichment operation however it turns out, so the
+	// count is taken once here rather than at each of the four exits. It used
+	// to be taken on the skip and success paths only, and makeChatRequest took
+	// it a second time for every call that reached the API -- so a listing the
+	// cache could not serve counted twice and one whose call failed counted not
+	// at all. The run that surfaced this reported 1561/1076 operations, 145%.
+	defer atomic.AddInt32(&s.completedJobs, 1)
+
 	classified := listing.IndustryField != "" && listing.Type != nil && listing.Discipline != ""
 	// With no description there is no summary to be had, so a classified
 	// listing has nothing left to fetch.
@@ -510,7 +518,6 @@ func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing
 		!hasDescription(listing)
 
 	if classified && summarised {
-		atomic.AddInt32(&s.completedJobs, 1)
 		atomic.AddInt32(&s.skippedJobs, 1)
 		utils.Debug("Enrichment already known for %q, skipping API call.", listing.Title)
 		return listing, nil
@@ -567,7 +574,6 @@ func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing
 		}
 	}
 
-	atomic.AddInt32(&s.completedJobs, 1)
 	return listing, nil
 }
 
@@ -794,6 +800,14 @@ func tokensPerMinuteFromEnv() int {
 	return defaultTokensPerMinute
 }
 
+// openaiBaseURL is where chat completions are sent, overridable for tests.
+func openaiBaseURL() string {
+	if base := strings.TrimSpace(os.Getenv("OPENAI_BASE_URL")); base != "" {
+		return base
+	}
+	return "https://api.openai.com/v1"
+}
+
 func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequest, operationType string) (ChatResponse, error) {
 	var chatResponse ChatResponse
 
@@ -804,7 +818,9 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 		return chatResponse, err
 	}
 
-	openaiEndpoint := "https://api.openai.com/v1/chat/completions"
+	// OPENAI_BASE_URL is the conventional override, and it lets a test drive a
+	// real reply through this function without reaching the network.
+	openaiEndpoint := strings.TrimSuffix(openaiBaseURL(), "/") + "/chat/completions"
 	apiKey := os.Getenv("OPENAI_API_KEY")
 
 	client := &http.Client{Timeout: 2 * time.Minute}
@@ -890,9 +906,11 @@ func (s *AIParserStep) makeChatRequest(ctx context.Context, chatRequest ChatRequ
 	}
 	defer resp.Body.Close()
 
-	current := atomic.AddInt32(&s.completedJobs, 1)
+	// Read, never add: the operation this call belongs to is counted by its
+	// caller, and counting it here too is what put the progress line above 100%.
+	current := atomic.LoadInt32(&s.completedJobs)
 	total := atomic.LoadInt32(&s.totalJobs)
-	utils.Log("AI Parser progress: %d/%d (%.1f%%) - %s completed",
+	utils.Log("AI Parser progress: %d/%d (%.1f%%) - %s returned",
 		current, total, (float64(current)/float64(total))*100, operationType)
 
 	body, err := ioutil.ReadAll(resp.Body)

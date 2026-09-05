@@ -2,7 +2,11 @@ package steps
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -793,5 +797,88 @@ func TestEnrichListingStillClassifiesWithoutADescription(t *testing.T) {
 
 	if step.skippedJobs != 0 {
 		t.Error("an unclassified listing was skipped, so it would never gain a discipline")
+	}
+}
+
+// Every listing is one enrichment operation, whatever becomes of it. The count
+// used to be taken on the skip and success paths only, while makeChatRequest
+// took it again for every call that reached the API: a listing the cache could
+// not serve counted twice, and one whose call failed counted not at all. The
+// run that surfaced this logged 1561/1076 operations -- 145% -- which makes the
+// progress line useless for judging whether a scrape is healthy.
+func TestEnrichListingCountsEachListingExactlyOnce(t *testing.T) {
+	jobType := models.GRADUATE
+	summary := "Apply your Go skills on payment systems"
+	desc := "Build payment systems in Go."
+
+	cached := models.Listing{
+		Title:         "Software Engineer",
+		IndustryField: models.BIG_TECH,
+		Type:          &jobType,
+		Discipline:    models.SOFTWARE,
+		OneLinerDesc:  &summary,
+	}
+	needsCall := models.Listing{
+		Title:       "Software Engineer",
+		Description: &desc,
+	}
+
+	// A reply good enough to take the success path all the way through.
+	enriched := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":`+
+			`"{\"industry\":\"Big Tech\",\"job_type\":\"Graduate\",`+
+			`\"discipline\":\"Software\",\"summary\":\"Build payment systems in Go\"}"}}]}`)
+	}))
+	defer enriched.Close()
+
+	// A 500 no retry can rescue: the failure path, which used to go uncounted.
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer failing.Close()
+
+	tests := []struct {
+		name    string
+		listing models.Listing
+		baseURL string
+	}{
+		{"served from cache, no call made", cached, enriched.URL},
+		{"call made and answered", needsCall, enriched.URL},
+		{"call made and failed", needsCall, failing.URL},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("OPENAI_API_KEY", "test-key")
+			t.Setenv("OPENAI_BASE_URL", tt.baseURL)
+
+			step := NewAiParserStep()
+			_, _ = step.EnrichListing(context.Background(), tt.listing)
+
+			if got := atomic.LoadInt32(&step.completedJobs); got != 1 {
+				t.Errorf("expected the listing to count as exactly one operation, completedJobs = %d", got)
+			}
+		})
+	}
+}
+
+// The progress line is emitted from the transport, which must report the count
+// its callers keep rather than adding one of its own.
+func TestMakeChatRequestDoesNotCountTheOperationItself(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"{}"}}]}`)
+	}))
+	defer server.Close()
+
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("OPENAI_BASE_URL", server.URL)
+
+	step := NewAiParserStep()
+	_, _ = step.makeChatRequest(context.Background(), ChatRequest{Model: "gpt-4o-mini"}, "EnrichListing")
+
+	if got := atomic.LoadInt32(&step.completedJobs); got != 0 {
+		t.Errorf("makeChatRequest must not advance the progress count, completedJobs = %d", got)
 	}
 }
