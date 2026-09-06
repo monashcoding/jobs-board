@@ -93,33 +93,61 @@ func TestEvaluateForBoardScoring(t *testing.T) {
 	long := string(make([]byte, 1600))
 	medium := string(make([]byte, 600))
 
+	// The base listing is a headline employer with a first-party link and a
+	// named state, so every case below carries 30 + 15 + 10 unless it removes
+	// one of them.
 	cases := []struct {
 		name   string
 		mutate func(*models.Listing)
 		want   int
 	}{
-		{"bare listing scores only its named state", func(l *models.Listing) {
-			l.ApplicationURL = nil
-		}, 10},
-		{"sponsored employer", func(l *models.Listing) { l.IsSponsored = true }, 30 + 15 + 10},
-		{"big tech counts as notable", func(l *models.Listing) { l.IndustryField = models.BIG_TECH }, 30 + 15 + 10},
-		{"quant trading counts as notable", func(l *models.Listing) { l.IndustryField = models.QUANT_TRADING }, 30 + 15 + 10},
-		{"recognised tech scores lower than notable", func(l *models.Listing) { l.IndustryField = models.TECH }, 15 + 15 + 10},
-		{"banks are recognised", func(l *models.Listing) { l.IndustryField = models.BANKS }, 15 + 15 + 10},
-		{"close date", func(l *models.Listing) { l.CloseDate = &soon }, 20 + 15 + 10},
-		{"long description", func(l *models.Listing) { l.Description = &long }, 15 + 15 + 10},
-		{"medium description", func(l *models.Listing) { l.Description = &medium }, 8 + 15 + 10},
+		{"headline employer, first-party link, named state", nil, 30 + 15 + 10},
+		{"a major employer scores below a headline one", func(l *models.Listing) {
+			l.Company.Name = "Deloitte"
+		}, 15 + 15 + 10},
+
+		// Recognition used to come from IndustryField because there was no
+		// company list to ask. It must not be scored twice now there is.
+		{"industry no longer scores on its own", func(l *models.Listing) {
+			l.IndustryField = models.BIG_TECH
+		}, 30 + 15 + 10},
+		{"a recognised industry adds nothing to a major employer", func(l *models.Listing) {
+			l.Company.Name = "Deloitte"
+			l.IndustryField = models.CONSULTING
+		}, 15 + 15 + 10},
+
+		// Sponsorship is a separate claim on a slot, so it stacks rather than
+		// standing in for recognition.
+		{"sponsorship stacks on recognition", func(l *models.Listing) {
+			l.IsSponsored = true
+		}, 30 + 30 + 15 + 10},
+		{"a sponsored major employer still scores below a sponsored headline one", func(l *models.Listing) {
+			l.Company.Name = "Deloitte"
+			l.IsSponsored = true
+		}, 15 + 30 + 15 + 10},
+
+		{"no application link", func(l *models.Listing) { l.ApplicationURL = nil }, 30 + 10},
+		{"close date", func(l *models.Listing) { l.CloseDate = &soon }, 30 + 20 + 15 + 10},
+		{"long description", func(l *models.Listing) { l.Description = &long }, 30 + 15 + 15 + 10},
+		{"medium description", func(l *models.Listing) { l.Description = &medium }, 30 + 8 + 15 + 10},
 		{"aggregator link earns no first-party points", func(l *models.Listing) {
 			u := "https://au.gradconnection.com/employers/x/jobs/y"
 			l.ApplicationURL = &u
-		}, 10},
+		}, 30 + 10},
 		{"aggregator subdomain is still an aggregator", func(l *models.Listing) {
 			u := "https://www.linkedin.com/jobs/view/123"
 			l.ApplicationURL = &u
-		}, 10},
+		}, 30 + 10},
 		{"nationwide only, no state bonus", func(l *models.Listing) {
 			l.Locations = []models.LocationType{models.AUSTRALIA}
-		}, 15},
+		}, 30 + 15},
+
+		// Off the company list entirely: ineligible, and scored with no
+		// recognition at all. It cannot reach the cap, but the score should
+		// still say why.
+		{"an untiered employer earns no recognition", func(l *models.Listing) {
+			l.Company.Name = "The Intern Group"
+		}, 15 + 10},
 	}
 
 	for _, tc := range cases {
@@ -128,6 +156,41 @@ func TestEvaluateForBoardScoring(t *testing.T) {
 				t.Errorf("score = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// The cap is spent on recognition, not just on how well a listing is written.
+// A bare headline posting and a well-formed major one are both meant to be
+// able to win, which is what keeps the board from becoming big tech only.
+func TestRecognitionOutweighsOneQualitySignalButNotAll(t *testing.T) {
+	soon := time.Now().Add(14 * 24 * time.Hour)
+	long := string(make([]byte, 1600))
+
+	bareHeadline := EvaluateForBoard(boardListing(func(l *models.Listing) {
+		l.ApplicationURL = nil
+		l.Locations = []models.LocationType{models.AUSTRALIA}
+	})).Score
+
+	majorWithOneSignal := EvaluateForBoard(boardListing(func(l *models.Listing) {
+		l.Company.Name = "Deloitte"
+		l.ApplicationURL = nil
+		l.Locations = []models.LocationType{models.AUSTRALIA}
+		l.CloseDate = &soon
+	})).Score
+
+	fullMajor := EvaluateForBoard(boardListing(func(l *models.Listing) {
+		l.Company.Name = "Deloitte"
+		l.CloseDate = &soon
+		l.Description = &long
+	})).Score
+
+	if bareHeadline >= majorWithOneSignal {
+		t.Errorf("a headline employer should not outrank a major one on recognition alone: %d vs %d",
+			bareHeadline, majorWithOneSignal)
+	}
+	if fullMajor <= bareHeadline {
+		t.Errorf("a fully-formed major listing should beat a bare headline one: %d vs %d",
+			fullMajor, bareHeadline)
 	}
 }
 
@@ -360,5 +423,47 @@ func TestEligibleListingsAreNeverUnranked(t *testing.T) {
 		if verdict.Tier == utils.TierUnranked {
 			t.Errorf("%q is eligible but untiered", company)
 		}
+	}
+}
+
+// The board is an Australian one, and stays one. An exemption for a prominent
+// employer's overseas roles was built and then measured: the listings it would
+// have admitted were TikTok's e-commerce programs in south-east Asia, and the
+// quant desks it was meant for carry no readable location at all.
+func TestOverseasListingsNeverReachTheBoard(t *testing.T) {
+	overseas := func(company string, location models.LocationType) models.Listing {
+		return boardListing(func(l *models.Listing) {
+			l.Company.Name = company
+			l.Locations = []models.LocationType{location}
+		})
+	}
+
+	for _, tc := range []struct {
+		name    string
+		listing models.Listing
+	}{
+		{"a headline employer in APAC", overseas("Jane Street", models.APAC)},
+		{"a headline employer somewhere else overseas", overseas("Jane Street", models.OTHERS)},
+		{"a major employer in APAC", overseas("Deloitte", models.APAC)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if EvaluateForBoard(tc.listing).Eligible {
+				t.Error("an overseas listing must not reach the board")
+			}
+		})
+	}
+}
+
+// APAC is a location, so it must not be mistaken for a state and earn the
+// bonus that goes with naming one.
+func TestAPACEarnsNoStateBonus(t *testing.T) {
+	apac := EvaluateForBoard(boardListing(func(l *models.Listing) {
+		l.Locations = []models.LocationType{models.APAC}
+	}))
+	australian := EvaluateForBoard(boardListing(nil))
+
+	if apac.Score != australian.Score-10 {
+		t.Errorf("APAC scored %d against %d for a named state; it should be 10 lower",
+			apac.Score, australian.Score)
 	}
 }

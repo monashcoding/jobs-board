@@ -28,7 +28,12 @@ const (
 	ACT       LocationType = "ACT"
 	TAS       LocationType = "TAS"
 	AUSTRALIA LocationType = "AUSTRALIA"
-	OTHERS    LocationType = "OTHERS"
+	// APAC is a listing outside Australia but in the region: Hong Kong,
+	// Singapore, Tokyo and the rest. It is not an Australian location and does
+	// not reach the Discord board; it exists so the website can say where an
+	// overseas listing actually is instead of filing it under OTHERS.
+	APAC   LocationType = "APAC"
+	OTHERS LocationType = "OTHERS"
 )
 
 type WFHStatus string

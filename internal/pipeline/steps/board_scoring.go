@@ -2,6 +2,7 @@ package steps
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"sort"
@@ -30,25 +31,42 @@ var aggregatorHosts = []string{
 	"linkedin.com",
 }
 
-// notableIndustries carry the strongest employer-recognition signal available
-// without a hand-maintained company list. IndustryField is assigned per listing
-// by the AI parser, so it keeps up with employers the sponsored list misses
-// (Telstra, Macquarie, TikTok, Quantium, Airwallex).
-var notableIndustries = map[models.IndustryField]bool{
-	models.BIG_TECH:      true,
-	models.QUANT_TRADING: true,
-}
+// defaultHeadlineBonus and defaultMajorBonus are what employer recognition is
+// worth to the board cap. They replace an industry-derived approximation of the
+// same thing: BIG_TECH and QUANT_TRADING scored 30, the other recognisable
+// industries 15, because there was no company list to ask. There is now, it is
+// tiered, and it is the signal that approximation was standing in for --
+// authoritative, and stable per employer where IndustryField is assigned per
+// listing by the AI parser and can move between runs.
+//
+// The gap between them is the tuning knob, not the sort order. Ordering the cap
+// by tier first and score second is the same mistake this scorer already made
+// once with CONSULTING: there are more than 100 slots' worth of headline
+// employers, so tier-first would fill the board with big tech and quant firms
+// and leave no room for the Big 4, the banks or mid-tier Australian tech
+// however good their listings are. A weighted bonus keeps prominence decisive
+// between comparable listings while a strong major posting -- closing date,
+// first-party link, detailed description -- can still beat a bare headline one.
+const (
+	defaultHeadlineBonus = 30
+	defaultMajorBonus    = 15
+)
 
-// recognisedTechIndustries score below notable ones but still above the rest.
-// CONSULTING belongs here: the large consultancies are among the most applied-to
-// graduate employers in the country, and scoring them at zero meant they lost
-// every tie against a smaller firm once the board became capped.
-var recognisedTechIndustries = map[models.IndustryField]bool{
-	models.TECH:               true,
-	models.TELECOMMUNICATIONS: true,
-	models.BANKS:              true,
-	models.CONSULTING:         true,
-}
+// defaultSponsoredBonus is what a paid placement is worth. It is deliberately
+// its own clause rather than an alternative to recognition: under the old
+// scoring a sponsored listing and a big-tech listing were interchangeable, and
+// a sponsored big-tech listing scored no more than either. Paying for placement
+// and being recognisable are different claims on a slot.
+const defaultSponsoredBonus = 30
+
+// Read once at startup so the board can be retuned without a rebuild, the same
+// way BOARD_MAX_LISTINGS works. Scoring stays deterministic within a process,
+// which is what the cap's stable ordering depends on.
+var (
+	headlineBonus  = intFromEnv("BOARD_HEADLINE_BONUS", defaultHeadlineBonus)
+	majorBonus     = intFromEnv("BOARD_MAJOR_BONUS", defaultMajorBonus)
+	sponsoredBonus = intFromEnv("BOARD_SPONSORED_BONUS", defaultSponsoredBonus)
+)
 
 // BoardVerdict is the result of scoring one listing for the Discord job board.
 type BoardVerdict struct {
@@ -76,11 +94,23 @@ type BoardVerdict struct {
 func EvaluateForBoard(listing models.Listing) BoardVerdict {
 	verdict := BoardVerdict{}
 
+	// Tiered whether or not the listing is eligible, so the field is never
+	// absent on a scored document and no consumer has to guess.
+	verdict.Tier = utils.CompanyTier(listing.Company.Name)
+
 	// --- Hard gates -------------------------------------------------------
 	if !boardDisciplines[listing.Discipline] {
 		verdict.Reasons = append(verdict.Reasons, "discipline is not SOFTWARE, DATA or CYBER")
 	}
 
+	// The board is an Australian one, with no exception for a prominent
+	// employer's overseas roles. That exception was built and then measured
+	// against the collection: of 262 non-Australian listings, the ones it would
+	// have admitted were TikTok's e-commerce programs in Malaysia, Indonesia
+	// and Thailand. The quant desks it was meant for -- Jane Street Hong Kong
+	// and Singapore -- do not carry a location the classifier can read at all.
+	// An overseas listing is still placed as precisely as the source allows --
+	// APAC where it says so -- but no overseas location opens this gate.
 	if !utils.IsAustralian(listing.Locations) {
 		verdict.Reasons = append(verdict.Reasons, "no Australian location")
 	}
@@ -108,12 +138,23 @@ func EvaluateForBoard(listing models.Listing) BoardVerdict {
 	verdict.Tier = utils.CompanyTier(listing.Company.Name)
 
 	// --- Score ------------------------------------------------------------
-	if listing.IsSponsored || notableIndustries[listing.IndustryField] {
-		verdict.Score += 30
-		verdict.Reasons = append(verdict.Reasons, "+30 notable employer")
-	} else if recognisedTechIndustries[listing.IndustryField] {
-		verdict.Score += 15
-		verdict.Reasons = append(verdict.Reasons, "+15 recognised tech industry")
+	// Employer recognition, from the board's own company list. Every eligible
+	// listing scores here and none scores zero: the company list is a hard gate,
+	// so an eligible employer is headline or major by definition. The bonus
+	// separates the two, which is the same reason the recap needed tiers rather
+	// than the gate.
+	switch verdict.Tier {
+	case utils.TierHeadline:
+		verdict.Score += headlineBonus
+		verdict.Reasons = append(verdict.Reasons, fmt.Sprintf("+%d headline employer", headlineBonus))
+	case utils.TierMajor:
+		verdict.Score += majorBonus
+		verdict.Reasons = append(verdict.Reasons, fmt.Sprintf("+%d major employer", majorBonus))
+	}
+
+	if listing.IsSponsored {
+		verdict.Score += sponsoredBonus
+		verdict.Reasons = append(verdict.Reasons, fmt.Sprintf("+%d sponsored", sponsoredBonus))
 	}
 
 	if listing.CloseDate != nil {

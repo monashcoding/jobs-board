@@ -31,37 +31,22 @@ func extractJobID(href string) string {
 }
 
 func parseLocations(location string) []models.LocationType {
-	locations := []models.LocationType{}
+	// The city-to-state table is shared with the other scrapers, so a place
+	// added for one source is known to all of them.
+	if australian := utils.AustralianLocationsIn(location); len(australian) > 0 {
+		return australian
+	}
 
-	// Simple mapping of common locations
-	if strings.Contains(location, "Melbourne") {
-		locations = append(locations, models.VIC)
-	} else if strings.Contains(location, "Sydney") {
-		locations = append(locations, models.NSW)
-	} else if strings.Contains(location, "Brisbane") {
-		locations = append(locations, models.QLD)
-	} else if strings.Contains(location, "Perth") {
-		locations = append(locations, models.WA)
-	} else if strings.Contains(location, "Adelaide") {
-		locations = append(locations, models.SA)
-	} else if strings.Contains(location, "Canberra") {
-		locations = append(locations, models.ACT)
-	} else if strings.Contains(location, "Hobart") {
-		locations = append(locations, models.TAS)
-	} else if strings.Contains(location, "Darwin") {
-		locations = append(locations, models.NT)
-	} else if strings.Contains(location, "Australia") {
+	if strings.Contains(location, "Australia") {
 		// A place we have no city mapping for, but LinkedIn still says it is in
 		// Australia (e.g. "Scoresby, Victoria, Australia").
 		utils.RecordUnmappedLocation("LinkedIn", location)
-		locations = append(locations, models.AUSTRALIA)
-	} else {
-		// Nothing identifies this as Australian. Defaulting to AUSTRALIA here
-		// used to stamp overseas jobs as Australian, which is how they ended up
-		// under the Australia filter.
-		utils.RecordUnmappedLocation("LinkedIn", location)
-		locations = append(locations, models.OTHERS)
+		return []models.LocationType{models.AUSTRALIA}
 	}
 
-	return locations
+	// Nothing identifies this as Australian. Defaulting to AUSTRALIA here used
+	// to stamp overseas jobs as Australian, which is how they ended up under
+	// the Australia filter.
+	utils.RecordUnmappedLocation("LinkedIn", location)
+	return []models.LocationType{utils.OverseasLocationFor(location)}
 }

@@ -64,81 +64,51 @@ func OpportunityToModel(baseURL string, opportunity Opportunity) (*models.Listin
 func ProspleLocationsToMPLOYLocationTypes(opportunity Opportunity) ([]models.LocationType, error) {
 	// Related Ticket (https://www.notion.so/monashcoding/Prosple-Scraper-Standardise-JobType-Names-1591e0829dd8808ba898f8dcc46eaec7)
 
-	// Predefined location types mapping
-	locationMap := map[string]models.LocationType{
-		"Australia":                    models.AUSTRALIA,
-		"Australian Capital Territory": models.ACT,
-		"New South Wales":              models.NSW,
-		"Northern Territory":           models.NT,
-		"Queensland":                   models.QLD,
-		"South Australia":              models.SA,
-		"Tasmania":                     models.TAS,
-		"Victoria":                     models.VIC,
-		"Western Australia":            models.WA,
-	}
-
-	// Initialize a slice to hold the mapped locations
 	locations := []models.LocationType{}
-	uniqueLocations := map[models.LocationType]struct{}{} // map to track unique locations
-	rawLocations := []string{}                            // every label we saw, for the overseas check
+	seen := map[models.LocationType]struct{}{}
+	rawLocations := []string{} // every label we saw, for the overseas check
 
-	// Iterate over the physical locations and their children
-	for _, location := range opportunity.PhysicalLocations {
-		rawLocations = append(rawLocations, location.Label)
+	add := func(label string) {
+		rawLocations = append(rawLocations, label)
 
-		// Check if the location is in the map
-		if mappedLocation, exists := locationMap[location.Label]; exists {
-			// If not already added, append to locations
-			if _, exists := uniqueLocations[mappedLocation]; !exists {
-				locations = append(locations, mappedLocation)
-				uniqueLocations[mappedLocation] = struct{}{} // Mark as added
-			}
-		} else {
-			// If the location isn't in the map, append "OTHERS" (only once)
-			utils.RecordUnmappedLocation("Prosple", location.Label)
-			if _, exists := uniqueLocations[models.OTHERS]; !exists {
-				locations = append(locations, models.OTHERS)
-				uniqueLocations[models.OTHERS] = struct{}{} // Mark as added
-			}
+		location, known := utils.AustralianLocationFor(label)
+		if !known {
+			// Reported so the shared table can be grown from real scrape output
+			// rather than guesswork.
+			utils.RecordUnmappedLocation("Prosple", label)
+			location = utils.OverseasLocationFor(label)
 		}
 
-		// Handle child locations
-		for _, childLocation := range location.Children {
-			rawLocations = append(rawLocations, childLocation.Label)
-
-			// Check if the child location is in the map
-			if mappedLocation, exists := locationMap[childLocation.Label]; exists {
-				// If not already added, append to locations
-				if _, exists := uniqueLocations[mappedLocation]; !exists {
-					locations = append(locations, mappedLocation)
-					uniqueLocations[mappedLocation] = struct{}{} // Mark as added
-				}
-			} else {
-				// If the child location isn't in the map, append "OTHERS" (only once)
-				utils.RecordUnmappedLocation("Prosple", childLocation.Label)
-				if _, exists := uniqueLocations[models.OTHERS]; !exists {
-					locations = append(locations, models.OTHERS)
-					uniqueLocations[models.OTHERS] = struct{}{} // Mark as added
-				}
-			}
+		if _, exists := seen[location]; !exists {
+			locations = append(locations, location)
+			seen[location] = struct{}{}
 		}
 	}
 
-	// Look through locations and if there is australia and one of the states, remove australia
-	if len(locations) > 1 {
-		for i, location := range locations {
-			if location == models.AUSTRALIA {
-				for _, state := range locations {
-					if state != models.AUSTRALIA && state != models.OTHERS {
-						locations = append(locations[:i], locations[i+1:]...)
-						break
-					}
-				}
-			}
+	for _, location := range opportunity.PhysicalLocations {
+		add(location.Label)
+		for _, child := range location.Children {
+			add(child.Label)
 		}
-	} else if len(locations) < 1 {
+	}
+
+	// A nationwide marker alongside a specific state says nothing the state
+	// does not.
+	if len(locations) > 1 {
+		trimmed := locations[:0]
+		for _, location := range locations {
+			if location == models.AUSTRALIA && utils.HasAustralianState(locations) {
+				continue
+			}
+			trimmed = append(trimmed, location)
+		}
+		locations = trimmed
+	}
+
+	if len(locations) == 0 {
 		// No locations at all tells us nothing about where the job is, so mark
-		// it unknown rather than claiming it is Australian.
+		// it unknown rather than claiming it is Australian. Normalisation gets
+		// a second attempt at it from the title.
 		locations = append(locations, models.OTHERS)
 	}
 

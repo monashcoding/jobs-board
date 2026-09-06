@@ -158,9 +158,11 @@ func (s *JaneStreetScraper) convertToListing(job Job) (models.Listing, error) {
 			models.INTERNATIONAL,
 			models.OTHER_RIGHTS,
 		},
-		SourceURLs:    []string{applicationURL},
-		Type:          &jobType,
-		Locations:     []models.LocationType{models.OTHERS},
+		SourceURLs: []string{applicationURL},
+		Type:       &jobType,
+		// Every desk here is overseas. The city is the only thing that says
+		// which region, and it was being discarded.
+		Locations:     []models.LocationType{utils.OverseasLocationFor(job.City, job.Position)},
 		StudyFields:   []string{"IT & Computer Science", "Engineering & Mathematics"},
 		Source:        models.JANESTREET,
 		IndustryField: models.QUANT_TRADING,

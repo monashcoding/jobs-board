@@ -161,6 +161,7 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 		}
 
 		listing = StripApplicationURLParams(listing)
+		listing = RecoverLocation(listing)
 
 		// Append the normalised listing to the result slice
 		normalised = append(normalised, listing)
@@ -169,6 +170,38 @@ func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listi
 	utils.Success("Normalisation: %d -> %d listings", len(listings), len(normalised))
 
 	return normalised, nil
+}
+
+// RecoverLocation places a listing whose source told us nothing about where it
+// is. A listing reaches here as OTHERS either because the source gave no
+// location at all or because it gave one no table matched -- Prosple labels a
+// job "Sydney" or "Hobart TAS" where the map only knew state names, and 18
+// genuinely Australian listings were sitting off the board because of it.
+//
+// The title is the fallback, since that is where the city usually reappears
+// ("Junior Infrastructure Engineer, Sydney"). Overseas wins: a title naming a
+// place outside Australia is placed there rather than promoted, so this can
+// only recover listings nothing identifies as foreign.
+//
+// Only a listing that is *entirely* OTHERS is touched. One that already names a
+// state knows where it is.
+func RecoverLocation(listing models.Listing) models.Listing {
+	if len(listing.Locations) != 1 || listing.Locations[0] != models.OTHERS {
+		return listing
+	}
+
+	if _, overseas := utils.FindOverseasToken(listing.Title); overseas {
+		listing.Locations = []models.LocationType{utils.OverseasLocationFor(listing.Title)}
+		return listing
+	}
+
+	if australian := utils.AustralianLocationsIn(listing.Title); len(australian) > 0 {
+		utils.Log("Recovered %v for %q from its title; the source gave no usable location.",
+			australian, listing.Title)
+		listing.Locations = australian
+	}
+
+	return listing
 }
 
 func ListingIsEOI(listing models.Listing) bool {

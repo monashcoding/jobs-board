@@ -51,11 +51,14 @@ func TestSanitiseAustralianLocations(t *testing.T) {
 			want:  []models.LocationType{models.OTHERS},
 		},
 		{
+			// Stripping AUSTRALIA leaves nothing, so the listing is placed by
+			// the token that disqualified it: Singapore is APAC, not the
+			// undifferentiated OTHERS it used to become.
 			name:  "overseas raw location strips bogus AUSTRALIA",
 			locs:  []models.LocationType{models.AUSTRALIA},
 			title: "Graduate Programme",
 			raw:   []string{"Singapore"},
-			want:  []models.LocationType{models.OTHERS},
+			want:  []models.LocationType{models.APAC},
 		},
 		{
 			// A program genuinely running in Sydney and Singapore is still an
@@ -120,5 +123,111 @@ func TestHasAustralianStateAndIsAustralian(t *testing.T) {
 				t.Errorf("IsAustralian(%v) = %v, want %v", tc.locs, got, tc.isAustralia)
 			}
 		})
+	}
+}
+
+// A token nothing places is filed as OTHERS. That is right for London and New
+// York, but an APAC city landing there would be a silent mistake, so the APAC
+// set is checked against the token list it is drawn from.
+func TestAPACTokensAreOverseasTokens(t *testing.T) {
+	for token := range apacTokens {
+		found := false
+		for _, known := range overseasTokens {
+			if known == token {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("APAC names %q, which is not an overseas token, so it can never match", token)
+		}
+	}
+}
+
+func TestOverseasLocationFor(t *testing.T) {
+	cases := map[string]models.LocationType{
+		"Hong Kong":                  models.APAC,
+		"singapore":                  models.APAC,
+		"Graduate Trader, Tokyo":     models.APAC,
+		"Kuala Lumpur, Malaysia":     models.APAC,
+		"London, UK":                 models.OTHERS,
+		"New York":                   models.OTHERS,
+		"Auckland":                   models.OTHERS,
+		"Graduate Software Engineer": models.OTHERS,
+		"":                           models.OTHERS,
+	}
+
+	for text, want := range cases {
+		if got := OverseasLocationFor(text); got != want {
+			t.Errorf("OverseasLocationFor(%q) = %q, want %q", text, got, want)
+		}
+	}
+}
+
+// APAC is a location outside Australia. Getting this wrong would put every
+// Hong Kong listing back on an Australian job board.
+func TestAPACIsNotAustralian(t *testing.T) {
+	apac := []models.LocationType{models.APAC}
+	if IsAustralian(apac) {
+		t.Error("IsAustralian(APAC) = true; APAC listings would reach the board")
+	}
+	if HasAustralianState(apac) {
+		t.Error("HasAustralianState(APAC) = true; APAC listings would earn the state bonus")
+	}
+	if !IsAustralian([]models.LocationType{models.VIC, models.APAC}) {
+		t.Error("a listing in both Melbourne and Singapore is still Australian")
+	}
+}
+
+// The table only earns its place if it knows the cities the sources actually
+// send. These are the labels behind the 18 listings that were filed as OTHERS.
+func TestAustralianLocationFor(t *testing.T) {
+	cases := map[string]models.LocationType{
+		"Sydney":     models.NSW,
+		"sydney":     models.NSW,
+		"Melbourne":  models.VIC,
+		"Hobart TAS": models.TAS,
+		"Gold Coast": models.QLD,
+		"Queensland": models.QLD,
+		"Perth":      models.WA,
+		"Canberra":   models.ACT,
+		"Victoria":   models.VIC,
+		"Australia":  models.AUSTRALIA,
+		// The nationwide marker must not win inside a state name.
+		"Western Australia": models.WA,
+		"South Australia":   models.SA,
+	}
+
+	for label, want := range cases {
+		got, ok := AustralianLocationFor(label)
+		if !ok {
+			t.Errorf("AustralianLocationFor(%q) not recognised", label)
+			continue
+		}
+		if got != want {
+			t.Errorf("AustralianLocationFor(%q) = %q, want %q", label, got, want)
+		}
+	}
+
+	for _, label := range []string{"Singapore", "London", "Remote", ""} {
+		if got, ok := AustralianLocationFor(label); ok {
+			t.Errorf("AustralianLocationFor(%q) = %q, want not recognised", label, got)
+		}
+	}
+}
+
+func TestAustralianLocationsInFindsEveryStateNamed(t *testing.T) {
+	got := AustralianLocationsIn("Graduate Program – Brisbane, Gold Coast, Sunshine Coast")
+	if len(got) != 1 || got[0] != models.QLD {
+		t.Errorf("three Queensland cities should be one state, got %v", got)
+	}
+
+	got = AustralianLocationsIn("Graduate Engineer - Sydney and Melbourne")
+	if len(got) != 2 {
+		t.Errorf("two states named, got %v", got)
+	}
+
+	if got := AustralianLocationsIn("Software Engineer, Hong Kong"); got != nil {
+		t.Errorf("nothing Australian named, got %v", got)
 	}
 }

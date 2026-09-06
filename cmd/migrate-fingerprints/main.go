@@ -54,6 +54,8 @@ type docState struct {
 	newFingerprint string
 	oldCompany     string
 	newCompany     string
+	oldLocations   []models.LocationType
+	newLocations   []models.LocationType
 	title          string
 	updatedAt      time.Time
 }
@@ -113,7 +115,7 @@ func runRekeyPhase(ctx context.Context, coll *mongo.Collection, apply bool) {
 		groups[state.newFingerprint] = append(groups[state.newFingerprint], state)
 	}
 
-	changed, renamed, duplicates := 0, 0, 0
+	changed, renamed, duplicates, relocated := 0, 0, 0, 0
 	for _, group := range groups {
 		if len(group) > 1 {
 			duplicates += len(group) - 1
@@ -125,6 +127,9 @@ func runRekeyPhase(ctx context.Context, coll *mongo.Collection, apply bool) {
 			if state.oldCompany != state.newCompany {
 				renamed++
 			}
+			if !sameLocations(state.oldLocations, state.newLocations) {
+				relocated++
+			}
 		}
 	}
 
@@ -133,6 +138,7 @@ func runRekeyPhase(ctx context.Context, coll *mongo.Collection, apply bool) {
 	utils.Log("Distinct listings afterwards:  %d", len(groups))
 	utils.Log("Fingerprints to rewrite:       %d", changed)
 	utils.Log("Company names to rewrite:      %d", renamed)
+	utils.Log("Locations to rewrite:          %d", relocated)
 	utils.Log("Duplicates to be superseded:   %d", duplicates)
 
 	reportDuplicates(groups)
@@ -166,14 +172,21 @@ func loadStates(ctx context.Context, coll *mongo.Collection) []docState {
 		listing := raw.Listing
 		oldCompany := listing.Company.Name
 
-		// The scraper normalises company names before upload and company name
-		// feeds the fingerprint, so the migration must apply the CURRENT
-		// normalisation rules or the next run will disagree and re-insert.
+		// The scraper normalises before upload and both company name and
+		// locations feed the fingerprint, so the migration must apply the
+		// CURRENT normalisation rules or the next run will disagree and
+		// re-insert.
 		normalised, err := steps.StandardiseCompanyName(listing)
 		if err != nil {
 			utils.Warn("Failed to standardise company name for %q: %v", listing.Title, err)
 			normalised = listing
 		}
+
+		// Recovering a location off the title re-keys the listing, which is the
+		// whole reason this tool exists. Applying it here is what lets those
+		// documents keep their identity -- and their Discord thread -- instead
+		// of being re-inserted alongside an orphan.
+		normalised = steps.RecoverLocation(normalised)
 
 		states = append(states, docState{
 			id:             listing.ID,
@@ -181,6 +194,8 @@ func loadStates(ctx context.Context, coll *mongo.Collection) []docState {
 			newFingerprint: steps.GenerateListingFingerprint(normalised),
 			oldCompany:     oldCompany,
 			newCompany:     normalised.Company.Name,
+			oldLocations:   listing.Locations,
+			newLocations:   normalised.Locations,
 			title:          listing.Title,
 			updatedAt:      listing.UpdatedAt,
 		})
@@ -190,6 +205,21 @@ func loadStates(ctx context.Context, coll *mongo.Collection) []docState {
 	}
 
 	return states
+}
+
+// sameLocations reports whether two location sets are identical in order and
+// content. They are built from the same source in the same order, so a plain
+// comparison is enough.
+func sameLocations(a, b []models.LocationType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // reportDuplicates prints the collision groups so they can be eyeballed before
@@ -229,6 +259,10 @@ func rekey(ctx context.Context, coll *mongo.Collection, groups map[string][]docS
 
 		for i, state := range group {
 			update := bson.M{"company.name": state.newCompany}
+
+			if !sameLocations(state.oldLocations, state.newLocations) {
+				update["locations"] = state.newLocations
+			}
 
 			if i == 0 {
 				update["fingerprint"] = fingerprint
