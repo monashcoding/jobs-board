@@ -301,3 +301,52 @@ func TestUnseenListingLosesBoardEligibility(t *testing.T) {
 		t.Errorf("a retired listing must lose board eligibility, got %v", update["board_eligible"])
 	}
 }
+
+// LinkedIn supplies no working rights and is rescraped from scratch every run,
+// so an unconditional write would erase what the AI parser derived the moment
+// the classification came back from the cache rather than the API.
+func TestEmptyWorkingRightsNeverOverwriteStoredOnes(t *testing.T) {
+	l := listing("Graduate Engineer", "Atlassian", "https://apply.example.com", models.VIC)
+
+	if _, ok := buildListingSet(l, "fp", "1.0.0", time.Now())["working_rights"]; ok {
+		t.Error("a listing with no working rights must not write the field")
+	}
+
+	l.WorkingRights = []models.WorkingRight{models.INTERNATIONAL}
+	set := buildListingSet(l, "fp", "1.0.0", time.Now())
+	rights, ok := set["working_rights"].([]models.WorkingRight)
+	if !ok || len(rights) != 1 || rights[0] != models.INTERNATIONAL {
+		t.Errorf("expected the derived rights to be written, got %v", set["working_rights"])
+	}
+}
+
+// The mark is a request made of a future run. It is cleared by the run that
+// answers it, and only by that run: a marked listing the scrape does not reach
+// keeps both its mark and the classification it already had.
+func TestReclassificationMarkIsClearedOnlyWhenTheAIParserRan(t *testing.T) {
+	l := listing("Junior Developer", "Atlassian", "https://apply.example.com", models.VIC)
+
+	if _, ok := buildListingSet(l, "fp", "1.0.0", time.Now())["needs_reclassification"]; ok {
+		t.Error("a run that produced no classification must not clear the mark")
+	}
+
+	l.Discipline = models.SOFTWARE
+	if buildListingSet(l, "fp", "1.0.0", time.Now())["needs_reclassification"] != false {
+		t.Error("a run that classified the listing must clear the mark")
+	}
+}
+
+// Hashing the mark would make adding the field change every document in the
+// collection, and every changed document is a Discord thread the bot re-renders.
+func TestReclassificationMarkIsNotPartOfTheContentHash(t *testing.T) {
+	l := listing("Junior Developer", "Atlassian", "https://apply.example.com", models.VIC)
+	l.Discipline = models.SOFTWARE
+
+	set := buildListingSet(l, "fp", "1.0.0", time.Now())
+	withMark := ContentHash(set)
+
+	delete(set, "needs_reclassification")
+	if ContentHash(set) != withMark {
+		t.Error("needs_reclassification must be excluded from the content hash")
+	}
+}

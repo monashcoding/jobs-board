@@ -139,6 +139,9 @@ func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models
 		"Australian Work Visa (All Other)":    models.INTERNATIONAL,
 		"Visa Sponsorship Included":           models.INTERNATIONAL,
 		"Hong Kong Permanent Resident":        models.INTERNATIONAL,
+		"Australian Student Visa":             models.INTERNATIONAL,
+		"Australian Temporary Work Visa":      models.INTERNATIONAL,
+		"Australian Bridging Visa":            models.INTERNATIONAL,
 	}
 
 	workingRights := []models.WorkingRight{}
@@ -153,7 +156,12 @@ func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models
 				seen[mappedRight] = struct{}{} // Mark as seen
 			}
 		} else {
-			// If not found in the map, default to "OTHER_RIGHTS"
+			// If not found in the map, default to "OTHER_RIGHTS" and report the
+			// string so the table above can be grown from real scrape output.
+			// The fallback is otherwise invisible, and it is not a harmless
+			// one: OTHER_RIGHTS reads on the board as a restriction, so a label
+			// we simply do not recognise looks like one the employer imposed.
+			utils.RecordUnmappedRight("Prosple", workingRight.Label)
 			if _, alreadySeen := seen[models.OTHER_RIGHTS]; !alreadySeen {
 				workingRights = append(workingRights, models.OTHER_RIGHTS)
 				seen[models.OTHER_RIGHTS] = struct{}{} // Mark as seen
@@ -168,7 +176,8 @@ func ProspleWorkingRightsToMPLOYWorkingRights(opportunity Opportunity) ([]models
 					seen[mappedRight] = struct{}{} // Mark as seen
 				}
 			} else {
-				// If the child isn't found in the map, default to "OTHER_RIGHTS"
+				// Same fallback as the parent right above, reported the same way.
+				utils.RecordUnmappedRight("Prosple", child.Label)
 				if _, alreadySeen := seen[models.OTHER_RIGHTS]; !alreadySeen {
 					workingRights = append(workingRights, models.OTHER_RIGHTS)
 					seen[models.OTHER_RIGHTS] = struct{}{} // Mark as seen

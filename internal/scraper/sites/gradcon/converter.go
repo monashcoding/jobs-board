@@ -224,7 +224,9 @@ func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]mode
 		"Australian Bridging Visa":                models.INTERNATIONAL,
 		"Australian Student Visa":                 models.INTERNATIONAL,
 		"Australian Skilled Migration Visa (485)": models.INTERNATIONAL,
+		"Australian Temporary Work Visa":          models.INTERNATIONAL,
 		"New Zealand Citizen":                     models.NZ_CITIZEN_PR,
+		"New Zealand Permanent Resident":          models.NZ_CITIZEN_PR,
 	}
 
 	// Initialize the result array
@@ -236,7 +238,12 @@ func GradConWorkRightsToMPLOYWorkingRights(campaign GradConnectCampaign) ([]mode
 		if mappedWorkRight, exists := workRightMapping[workRight]; exists {
 			workingRights = append(workingRights, mappedWorkRight)
 		} else {
-			// Map unknown work rights to OTHER_RIGHTS
+			// Map unknown work rights to OTHER_RIGHTS, and report the string so
+			// the table above can be grown from real scrape output. The
+			// fallback is otherwise invisible, and it is not a harmless one:
+			// OTHER_RIGHTS reads on the board as a restriction, so a label we
+			// simply do not recognise looks like one the employer imposed.
+			utils.RecordUnmappedRight("GradConnection", workRight)
 			workingRights = append(workingRights, models.OTHER_RIGHTS)
 		}
 	}

@@ -130,7 +130,6 @@ func buildListingSet(listing models.Listing, fingerprint string, version string,
 		"close_date":      listing.CloseDate,
 		"locations":       listing.Locations,
 		"study_fields":    listing.StudyFields,
-		"working_rights":  listing.WorkingRights,
 		"source":          listing.Source,
 		"is_sponsored":    listing.IsSponsored,
 		"version":         version,
@@ -160,6 +159,16 @@ func buildListingSet(listing models.Listing, fingerprint string, version string,
 		set["type"] = listing.Type
 	}
 
+	// Working rights follow the same rule as the enrichment fields, because
+	// for most of the collection they are one: only GradConnection and Prosple
+	// publish them, and everywhere else they are read off the description by
+	// the AI parser. LinkedIn is rescraped with no rights on every run, so an
+	// unconditional write would erase what a previous run derived the moment
+	// the classification came back from the cache instead of the API.
+	if len(listing.WorkingRights) > 0 {
+		set["working_rights"] = listing.WorkingRights
+	}
+
 	if listing.IndustryField != "" {
 		set["industry_field"] = listing.IndustryField
 	}
@@ -169,6 +178,12 @@ func buildListingSet(listing models.Listing, fingerprint string, version string,
 		set["board_score"] = listing.BoardScore
 		set["board_eligible"] = listing.BoardEligible
 		set["company_tier"] = listing.CompanyTier
+
+		// This run derived a classification, so whatever asked for one has been
+		// answered. Cleared here rather than where the flag is read so that a
+		// listing marked for reclassification but not scraped this run keeps
+		// the mark and is picked up by a later run.
+		set["needs_reclassification"] = false
 	}
 
 	if listing.OpenDate != nil {
@@ -188,7 +203,12 @@ func buildListingSet(listing models.Listing, fingerprint string, version string,
 // volatileSetKeys are written on every run by definition, so they are excluded
 // from the content hash. Including updated_at would make every document differ
 // from itself and defeat the whole comparison.
-var volatileSetKeys = map[string]bool{"updated_at": true}
+//
+// needs_reclassification is excluded for a different reason: it is a request
+// made of a future run, not part of what a listing is. Hashing it would mean
+// adding the field changed every document in the collection, and every changed
+// document is a Discord thread the bot re-renders.
+var volatileSetKeys = map[string]bool{"updated_at": true, "needs_reclassification": true}
 
 // unseenListingUpdate is what is written to a listing this run did not see.
 func unseenListingUpdate() bson.M {

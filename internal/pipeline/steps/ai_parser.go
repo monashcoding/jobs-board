@@ -64,13 +64,15 @@ func NewAiParserStepWithCache(mongodb *database.MongoDB) *AIParserStep {
 // them is sound and turns a steady-state run into a handful of API calls
 // instead of three per listing.
 type cachedEnrichment struct {
-	OneLinerDesc          *string              `bson:"one_liner"`
-	IndustryField         models.IndustryField `bson:"industry_field"`
-	Type                  *models.JobType      `bson:"type"`
-	Discipline            models.Discipline    `bson:"discipline"`
-	Fingerprint           string               `bson:"fingerprint"`
-	Description           *string              `bson:"description"`
-	SourceDescriptionHash string               `bson:"source_description_hash"`
+	OneLinerDesc          *string               `bson:"one_liner"`
+	IndustryField         models.IndustryField  `bson:"industry_field"`
+	Type                  *models.JobType       `bson:"type"`
+	Discipline            models.Discipline     `bson:"discipline"`
+	WorkingRights         []models.WorkingRight `bson:"working_rights"`
+	NeedsReclassification bool                  `bson:"needs_reclassification"`
+	Fingerprint           string                `bson:"fingerprint"`
+	Description           *string               `bson:"description"`
+	SourceDescriptionHash string                `bson:"source_description_hash"`
 }
 
 // HashSourceDescription fingerprints a description exactly as scraped. It is
@@ -106,6 +108,8 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 			"industry_field":          1,
 			"type":                    1,
 			"discipline":              1,
+			"working_rights":          1,
+			"needs_reclassification":  1,
 			"description":             1,
 			"source_description_hash": 1,
 		}))
@@ -133,7 +137,8 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 		cache[doc.Fingerprint] = doc
 	}
 
-	var reusedOneLiner, reusedClassification, reusedDescription int
+	var reusedOneLiner, reusedClassification, reusedDescription, reusedRights int
+	var pendingReclassification int
 
 	for i := range listings {
 		doc, ok := cache[fingerprints[i]]
@@ -152,7 +157,18 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 		// discarded the job type because the cache had already filled it with
 		// the stale one. Job type is a hard gate, so a listing wrongly stored as
 		// OTHER could never recover and stayed off the board permanently.
-		if doc.IndustryField != "" && doc.Type != nil && doc.Discipline != "" {
+		// A document marked for reclassification is deliberately not reused:
+		// leaving its stored classification out of the listing is what makes
+		// the listing look unclassified, which is what makes the API call
+		// happen. Marking rather than deleting the stored fields means a
+		// listing this run does not scrape keeps the classification it has and
+		// stays on the board, instead of being stranded with the fields blank.
+		//
+		// The one-liner and the formatted description below are still reused.
+		// Neither is what the mark is asking to redo, and both are expensive.
+		if doc.NeedsReclassification {
+			pendingReclassification++
+		} else if doc.IndustryField != "" && doc.Type != nil && doc.Discipline != "" {
 			if listings[i].IndustryField == "" {
 				listings[i].IndustryField = doc.IndustryField
 			}
@@ -163,6 +179,18 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 				listings[i].Discipline = doc.Discipline
 			}
 			reusedClassification++
+		}
+
+		// Working rights are restored separately from the three axes above.
+		// They are not always AI-derived -- GradConnection and Prosple publish
+		// them -- so they can be present on a document whose classification
+		// predates the schema, and reusing them is sound either way. Without
+		// this a LinkedIn listing, which is rescraped with no rights every run
+		// and whose classification comes from this cache, would arrive at the
+		// upload step empty and overwrite the rights a previous run derived.
+		if !doc.NeedsReclassification && len(listings[i].WorkingRights) == 0 && len(doc.WorkingRights) > 0 {
+			listings[i].WorkingRights = doc.WorkingRights
+			reusedRights++
 		}
 
 		// Reuse the stored formatted description when the source text is
@@ -176,8 +204,13 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 	}
 
 	utils.Success(
-		"AI enrichment cache: reused %d one-liners, %d classifications, %d formatted descriptions across %d listings.",
-		reusedOneLiner, reusedClassification, reusedDescription, len(listings))
+		"AI enrichment cache: reused %d one-liners, %d classifications, %d working-rights sets, %d formatted descriptions across %d listings.",
+		reusedOneLiner, reusedClassification, reusedRights, reusedDescription, len(listings))
+
+	if pendingReclassification > 0 {
+		utils.Log("%d listings are marked for reclassification and will be re-sent to OpenAI.",
+			pendingReclassification)
+	}
 }
 
 // enrichmentScore counts how many cacheable fields a stored document actually
@@ -194,6 +227,9 @@ func enrichmentScore(doc cachedEnrichment) int {
 		score++
 	}
 	if doc.Discipline != "" {
+		score++
+	}
+	if len(doc.WorkingRights) > 0 {
 		score++
 	}
 	if doc.SourceDescriptionHash != "" && doc.Description != nil && *doc.Description != "" {
@@ -364,7 +400,21 @@ type ChatRequest struct {
 	MaxTokens int `json:"max_tokens,omitempty"`
 	// ResponseFormat constrains generation to a schema where one applies.
 	ResponseFormat map[string]any `json:"response_format,omitempty"`
+	// Temperature is a pointer so that 0 can be sent, which omitempty on a
+	// float64 could not express. Left nil the API's own default of 1 applies.
+	Temperature *float64 `json:"temperature,omitempty"`
 }
+
+// deterministic is the temperature for a request whose answer is a
+// classification rather than a piece of writing.
+//
+// Left at the API default of 1, the same listing could be classified two ways:
+// ten byte-identical junior titles in the collection came back as GRADUATE on
+// one call and OTHER on another, and "Australian citizenship is required for
+// this role" was read off a description on one call and missed on the next.
+// Sampling is what a summary wants and the opposite of what a hard board gate
+// wants, and this call is now mostly the latter.
+var deterministic = 0.0
 
 type ChatResponse struct {
 	Choices []struct {
@@ -485,9 +535,13 @@ type classificationResponse struct {
 // in a run shares a byte-identical prefix, which is the shape prompt caching
 // needs. Previously these ~900 tokens were re-sent inside the user message of
 // every call, which made them the single largest line in the token budget.
-const enrichmentInstructions = "You classify job listings and summarise them. Respond with a JSON object holding the keys industry, job_type, discipline and summary.\n\n" +
+const enrichmentInstructions = "You classify job listings and summarise them. Respond with a JSON object holding the keys industry, job_type, discipline, working_rights and summary.\n\n" +
 	"1. INDUSTRY, the employer's sector. One of: CONSULTING, BANKS, BIG_TECH, TECH, QUANT_TRADING, ENERGY, GOVERNMENT, MANUFACTURING, TELECOMMUNICATIONS, RETAIL, TRANSPORTATION, OTHER_INDUSTRY.\n" +
-	"2. JOBTYPE, one of: INTERN, GRADUATE, OTHER.\n" +
+	"2. JOBTYPE, how much professional experience the role asks for. One of:\n" +
+	"   INTERN - the applicant is still studying: internships, vacation programs, clerkships, cadetships, industry placements, part-time student roles.\n" +
+	"   GRADUATE - open to someone with no professional experience. Graduate programs and rotations, but also junior, entry-level and early-career roles hiring on the same basis.\n" +
+	"   OTHER - two or more years of professional experience required, or a title carrying seniority: senior, lead, staff, principal, head, manager, director.\n\n" +
+	"Decide JOBTYPE by the experience asked for, not by the word in the title, and read the MINIMUM the posting will accept rather than any figure it mentions. \"0-2 years\" and \"up to 2 years\" are ceilings and mean GRADUATE. \"At least 2 years\", \"2+ years\" and \"2-4 years\" are floors and mean OTHER, because someone finishing a degree cannot meet them. A floor of one year or less (\"minimum 1-2 years\") is GRADUATE: a final-year student with an internship behind them can meet it. \"Junior\" and \"Entry Level\" are GRADUATE unless the posting sets such a floor. \"Associate\" is graduate-level at a consultancy, bank or law firm but usually mid-level in tech, so decide it on the years required rather than the word. When the posting states no experience requirement at all, judge by the title and prefer GRADUATE over OTHER.\n\n" +
 	"3. DISCIPLINE, the technical discipline of the work itself. One of:\n" +
 	"   SOFTWARE - writing or shipping software: software engineering, web, mobile, embedded, devops, cloud, platform, SRE, QA.\n" +
 	"   DATA - data science, data engineering, analytics, machine learning, AI research.\n" +
@@ -495,14 +549,20 @@ const enrichmentInstructions = "You classify job listings and summarise them. Re
 	"   ENGINEERING - non-software engineering: civil, mechanical, electrical, chemical, mining, aerospace.\n" +
 	"   OTHER_DISCIPLINE - anything else, including consulting, finance, sales, marketing, HR, legal, supply chain, and general graduate programs with no technical component.\n\n" +
 	"Judge DISCIPLINE by the role, not the employer: a marketing role at a software company is OTHER_DISCIPLINE. If the title is generic (e.g. \"Graduate Program\") use the company and description to decide, and prefer OTHER_DISCIPLINE when the work is not clearly technical.\n\n" +
-	"4. SUMMARY, one concise sentence describing the job, naming the concrete skills or tools it uses and what they are applied to. Prefer the form 'Apply your [skills] skills on [projects]'. If the role is not technical, describe it plainly in the same length instead of inventing a tech stack."
+	"4. WORKING_RIGHTS, the visa statuses the listing says it accepts, as an array. Report only what the posting actually states; return an empty array when it says nothing about work rights, which is the common case. Never infer from the employer, the location or the seniority. Any of:\n" +
+	"   AUS_CITIZEN_PR - Australian citizens or permanent residents. Use this alone when the posting requires citizenship, permanent residency, \"full working rights\", \"unrestricted work rights\" or a security clearance.\n" +
+	"   NZ_CITIZEN_PR - New Zealand citizens or permanent residents, where the posting names them separately.\n" +
+	"   INTERNATIONAL - applicants on a visa. Use this when the posting offers visa sponsorship, or says student, graduate (485) or other temporary visa holders may apply.\n" +
+	"The Eligibility line, when present, quotes the passages of the posting that mention work rights. It is lifted verbatim and may include the application form's own questions -- \"Which of the following statements best describes your right to work in Australia?\" is a question put to the applicant, not a requirement the employer stated, so it means an empty array.\n\n" +
+	"5. SUMMARY, one concise sentence describing the job, naming the concrete skills or tools it uses and what they are applied to. Prefer the form 'Apply your [skills] skills on [projects]'. If the role is not technical, describe it plainly in the same length instead of inventing a tech stack."
 
 // enrichmentResponse is the model's reply to the merged prompt.
 type enrichmentResponse struct {
-	Industry   string `json:"industry"`
-	JobType    string `json:"job_type"`
-	Discipline string `json:"discipline"`
-	Summary    string `json:"summary"`
+	Industry      string   `json:"industry"`
+	JobType       string   `json:"job_type"`
+	Discipline    string   `json:"discipline"`
+	WorkingRights []string `json:"working_rights"`
+	Summary       string   `json:"summary"`
 }
 
 // EnrichListing derives the three classification axes and the one-line summary
@@ -539,6 +599,7 @@ func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing
 		// The classification JSON plus one sentence.
 		MaxTokens:      200,
 		ResponseFormat: enrichmentSchema(),
+		Temperature:    &deterministic,
 		Messages: []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
@@ -565,6 +626,22 @@ func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing
 		listing.IndustryField = industry
 		listing.Type = &jobType
 		listing.Discipline = discipline
+
+		// Working rights ride along on the classification, and are taken only
+		// when the source supplied none. A source that states them is
+		// authoritative -- GradConnection and Prosple both publish the
+		// employer's own list -- whereas this is read off prose. LinkedIn
+		// supplies none at all, and it is three quarters of the board, so
+		// before this every second listing a student opened said nothing about
+		// whether they could apply.
+		//
+		// Deliberately tied to the classification call rather than given a
+		// trigger of its own: most postings say nothing about work rights, so
+		// a listing that legitimately has none would otherwise be re-sent to
+		// OpenAI on every run forever, for an empty array each time.
+		if len(listing.WorkingRights) == 0 {
+			listing.WorkingRights = parseWorkingRights(content, listing.Title)
+		}
 	}
 
 	// Only keep a summary that had a description behind it. The schema makes
@@ -602,9 +679,13 @@ func enrichmentSchema() map[string]any {
 					"industry":   map[string]any{"type": "string", "enum": sortedKeys(industryMap)},
 					"job_type":   map[string]any{"type": "string", "enum": sortedKeys(jobTypeMap)},
 					"discipline": map[string]any{"type": "string", "enum": sortedKeys(disciplineMap)},
-					"summary":    map[string]any{"type": "string"},
+					"working_rights": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string", "enum": sortedKeys(workingRightMap)},
+					},
+					"summary": map[string]any{"type": "string"},
 				},
-				"required":             []string{"industry", "job_type", "discipline", "summary"},
+				"required":             []string{"industry", "job_type", "discipline", "working_rights", "summary"},
 				"additionalProperties": false,
 			},
 		},
@@ -615,6 +696,17 @@ var jobTypeMap = map[string]models.JobType{
 	"INTERN":   models.INTERN,
 	"GRADUATE": models.GRADUATE,
 	"OTHER":    models.OTHER,
+}
+
+// workingRightMap is the subset of models.WorkingRight the model may return.
+// OTHER_RIGHTS is deliberately absent: it exists to hold a source's own label
+// that no mapping table recognises, and there is no such label here. Offering
+// it would give the model a bin to drop anything it was unsure about into,
+// which reads on the board as a restriction the posting never stated.
+var workingRightMap = map[string]models.WorkingRight{
+	"AUS_CITIZEN_PR": models.AUS_CITIZEN_PR,
+	"NZ_CITIZEN_PR":  models.NZ_CITIZEN_PR,
+	"INTERNATIONAL":  models.INTERNATIONAL,
 }
 
 var disciplineMap = map[string]models.Discipline{
@@ -699,6 +791,38 @@ func parseClassification(content string, title string) (models.IndustryField, mo
 	return mapClassification(parsed.Industry, parsed.JobType, parsed.Discipline, title)
 }
 
+// parseWorkingRights reads the working-rights array off the enrichment reply.
+//
+// A reply that is not JSON yields nothing rather than an error: the delimited
+// fallback format parseClassification still honours predates this field and
+// never carried it, so there is nothing to recover from such a reply.
+func parseWorkingRights(content string, title string) []models.WorkingRight {
+	var parsed enrichmentResponse
+	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &parsed); err != nil {
+		return nil
+	}
+
+	rights := []models.WorkingRight{}
+	seen := map[models.WorkingRight]struct{}{}
+	for _, raw := range parsed.WorkingRights {
+		mapped, ok := workingRightMap[strings.TrimSpace(raw)]
+		if !ok {
+			utils.Warn("Unknown working right %q for %q. Ignoring it.", raw, title)
+			continue
+		}
+		if _, dup := seen[mapped]; dup {
+			continue
+		}
+		seen[mapped] = struct{}{}
+		rights = append(rights, mapped)
+	}
+
+	if len(rights) == 0 {
+		return nil
+	}
+	return rights
+}
+
 // hasDescription reports whether the listing carries description text.
 func hasDescription(listing models.Listing) bool {
 	return listing.Description != nil && strings.TrimSpace(*listing.Description) != ""
@@ -711,9 +835,105 @@ func enrichmentDescriptionSuffix(listing models.Listing) string {
 		return ""
 	}
 
-	return "\nDescription: " + truncateForPrompt(
-		descriptionForPrompt(*listing.Description), classificationDescriptionLimit)
+	text := descriptionForPrompt(*listing.Description)
+	suffix := "\nDescription: " + truncateForPrompt(text, classificationDescriptionLimit)
+
+	// The truncated opening decides industry, job type and discipline, but it
+	// is the wrong part of the posting for working rights. Eligibility is
+	// stated near the end, under "About you" or a bulleted requirements list:
+	// "Australian citizenship is required for this role" sat at character 2274
+	// of one description, 274 past the cut, so the model was asked about
+	// working rights on text that could not contain the answer and correctly
+	// said nothing. Raising the limit for every listing would pay for the whole
+	// tail of every posting to reach the one line that matters, so the
+	// eligibility sentences are lifted out and appended on their own.
+	if excerpt := eligibilityExcerpt(*listing.Description); excerpt != "" {
+		suffix += "\nEligibility: " + excerpt
+	}
+
+	return suffix
 }
+
+// eligibilityPattern matches a sentence that says something about who may hold
+// the role. Deliberately narrow: it is a cue to include one sentence, not a
+// classifier, and anything it lets through is judged by the model afterwards.
+var eligibilityPattern = regexp.MustCompile(
+	`(?i)(citizen|permanent resident|\bvisa\b|work(ing)? rights|right to work|sponsor|security clearance|485)`)
+
+// eligibilityExcerpt returns the parts of a description that mention work
+// rights, capped so the addition stays small however long the posting is.
+//
+// It takes the description as scraped rather than the text prepared for the
+// prompt, because that preparation collapses whitespace and the markup is where
+// the structure is.
+//
+// Windows around each match rather than whole sentences, because job postings
+// frequently have no sentence boundaries to find. "Australian citizenship is
+// required for this role" arrived inside a 900-character run with no full stop,
+// newline or list item anywhere near it -- the heading above it and the bullet
+// list below it were the only structure, and both were markup. Splitting gave
+// one enormous fragment, and trimming that fragment to a budget threw away the
+// clause that had matched in the first place.
+func eligibilityExcerpt(description string) string {
+	// Tags become spaces, then whitespace is collapsed, so that offsets into
+	// the text line up with what the model will read.
+	text := html.UnescapeString(promptTagPattern.ReplaceAllString(description, " "))
+	text = strings.Join(strings.Fields(text), " ")
+
+	matches := eligibilityPattern.FindAllStringIndex(text, -1)
+	if matches == nil {
+		return ""
+	}
+
+	// Merge overlapping windows so a paragraph mentioning citizenship, visas
+	// and sponsorship in consecutive clauses is quoted once, not three times.
+	type window struct{ start, end int }
+	var windows []window
+	for _, m := range matches {
+		w := window{start: m[0] - eligibilityContextBefore, end: m[1] + eligibilityContextAfter}
+		if w.start < 0 {
+			w.start = 0
+		}
+		if w.end > len(text) {
+			w.end = len(text)
+		}
+		if n := len(windows); n > 0 && w.start <= windows[n-1].end {
+			if w.end > windows[n-1].end {
+				windows[n-1].end = w.end
+			}
+			continue
+		}
+		windows = append(windows, w)
+	}
+
+	var kept []string
+	total := 0
+	for _, w := range windows {
+		excerpt := strings.TrimSpace(text[w.start:w.end])
+		if total+len(excerpt) > eligibilityExcerptLimit {
+			break
+		}
+		kept = append(kept, excerpt)
+		total += len(excerpt)
+	}
+
+	return strings.Join(kept, " ... ")
+}
+
+// How much of the surrounding text to quote either side of a match. The clause
+// before it carries the subject ("this role", "applicants") and the clause
+// after carries the qualifier ("unless sponsored", "or equivalent"), and
+// without both the model is reading a keyword rather than a statement.
+const (
+	eligibilityContextBefore = 120
+	eligibilityContextAfter  = 160
+)
+
+// eligibilityExcerptLimit bounds the whole addition. It caps this at roughly
+// 120 tokens on a listing that says anything about work rights at all, and
+// nothing on one that does not -- against the 2000 characters the description
+// already costs.
+const eligibilityExcerptLimit = 560
 
 // promptTagPattern matches an HTML tag for removal from a prompt.
 var promptTagPattern = regexp.MustCompile(`(?s)<[^>]*>`)

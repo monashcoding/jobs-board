@@ -50,8 +50,12 @@ func TestEvaluateForBoardGates(t *testing.T) {
 		}, false},
 		{"no location is excluded", func(l *models.Listing) { l.Locations = nil }, false},
 		{"untyped role is excluded", func(l *models.Listing) { l.Type = nil }, false},
-		{"OTHER job type is excluded", func(l *models.Listing) {
+		{"OTHER job type is excluded: the board is for students", func(l *models.Listing) {
 			t := models.OTHER
+			l.Type = &t
+		}, false},
+		{"a job type outside the board's set is excluded", func(l *models.Listing) {
+			t := models.JobType("VOLUNTEER")
 			l.Type = &t
 		}, false},
 		{"missing application URL is excluded", func(l *models.Listing) { l.ApplicationURL = nil }, false},

@@ -137,9 +137,10 @@ func RunScraper() {
 
 	utils.Success("Scraping section finished. Starting pipelines...")
 
-	// Surface every location string no city table matched, so the tables can be
-	// grown from real scrape output instead of guesswork.
+	// Surface every source string no mapping table matched, so the tables can
+	// be grown from real scrape output instead of guesswork.
 	utils.ReportUnmappedLocations()
+	utils.ReportUnmappedRights()
 
 	// Create the pipeline with active steps
 	processingPipeline := pipeline.NewPipeline(pipelineSteps)

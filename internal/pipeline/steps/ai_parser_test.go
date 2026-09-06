@@ -996,3 +996,167 @@ func TestPromptBudgetIsSpentOnProseNotMarkup(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+func TestParseWorkingRightsReadsTheArray(t *testing.T) {
+	content := `{"industry":"BANKS","job_type":"GRADUATE","discipline":"SOFTWARE",` +
+		`"working_rights":["AUS_CITIZEN_PR","INTERNATIONAL"],"summary":"s"}`
+
+	rights := parseWorkingRights(content, "Graduate Engineer")
+
+	if len(rights) != 2 {
+		t.Fatalf("expected 2 rights, got %v", rights)
+	}
+	if rights[0] != models.AUS_CITIZEN_PR || rights[1] != models.INTERNATIONAL {
+		t.Errorf("unexpected rights %v", rights)
+	}
+}
+
+// An empty array is the answer for most postings: they say nothing about work
+// rights. It has to stay empty rather than becoming OTHER_RIGHTS, which on the
+// board reads as a restriction the employer never stated.
+func TestParseWorkingRightsKeepsSilenceSilent(t *testing.T) {
+	content := `{"industry":"TECH","job_type":"GRADUATE","discipline":"SOFTWARE",` +
+		`"working_rights":[],"summary":"s"}`
+
+	if rights := parseWorkingRights(content, "Graduate Engineer"); len(rights) != 0 {
+		t.Errorf("expected no rights, got %v", rights)
+	}
+}
+
+func TestParseWorkingRightsIgnoresUnknownAndDuplicateValues(t *testing.T) {
+	content := `{"working_rights":["AUS_CITIZEN_PR","OTHER_RIGHTS","AUS_CITIZEN_PR"]}`
+
+	rights := parseWorkingRights(content, "Graduate Engineer")
+
+	if len(rights) != 1 || rights[0] != models.AUS_CITIZEN_PR {
+		t.Errorf("expected only AUS_CITIZEN_PR, got %v", rights)
+	}
+}
+
+// The delimited fallback format predates working rights and never carried them,
+// so a non-JSON reply yields nothing rather than a garbled guess.
+func TestParseWorkingRightsIgnoresNonJSONReplies(t *testing.T) {
+	if rights := parseWorkingRights("BANKS#GRADUATE#SOFTWARE", "T"); rights != nil {
+		t.Errorf("expected nil, got %v", rights)
+	}
+}
+
+func TestEnrichmentSchemaConstrainsWorkingRights(t *testing.T) {
+	body := enrichmentSchema()["json_schema"].(map[string]any)["schema"].(map[string]any)
+	props := body["properties"].(map[string]any)
+
+	field, ok := props["working_rights"].(map[string]any)
+	if !ok {
+		t.Fatal("working_rights missing from the schema")
+	}
+	if field["type"] != "array" {
+		t.Errorf("working_rights must be an array, got %v", field["type"])
+	}
+
+	values := field["items"].(map[string]any)["enum"].([]string)
+	if len(values) != len(workingRightMap) {
+		t.Errorf("schema offers %d rights, workingRightMap accepts %d", len(values), len(workingRightMap))
+	}
+	for _, v := range values {
+		if _, ok := workingRightMap[v]; !ok {
+			t.Errorf("schema offers %q, which the parser does not accept", v)
+		}
+	}
+
+	// OTHER_RIGHTS means "a source label we do not recognise". The model has no
+	// source label, so offering it would only give it somewhere to put doubt.
+	if _, ok := workingRightMap["OTHER_RIGHTS"]; ok {
+		t.Error("the model must not be able to return OTHER_RIGHTS")
+	}
+
+	required := body["required"].([]string)
+	found := false
+	for _, r := range required {
+		if r == "working_rights" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("working_rights must be required, or a strict schema rejects the call")
+	}
+}
+
+// The prompt is the only thing standing between "Junior Software Engineer" and
+// a coin flip: job type is a hard board gate, and ten byte-identical junior
+// titles previously came back classified both ways.
+func TestPromptDefinesWhereGraduateEnds(t *testing.T) {
+	for _, phrase := range []string{"Junior", "Entry Level", "Associate", "MINIMUM", "ceilings", "floors"} {
+		if !strings.Contains(enrichmentInstructions, phrase) {
+			t.Errorf("the job type definition no longer mentions %q", phrase)
+		}
+	}
+}
+
+// The line this was built for. It sat at character 2274 of a real posting --
+// past the 2000-character cut the description is truncated to -- inside a run
+// of prose with no full stop, newline or list item anywhere near it.
+func TestEligibilityExcerptFindsRightsStatedPastTheTruncation(t *testing.T) {
+	description := "<p>" + strings.Repeat("Boilerplate about the team and the role. ", 60) +
+		"Enough About Us, Let's Talk About You Australian citizenship is required for this role " +
+		"You may have all or some of the following skills</p>"
+
+	excerpt := eligibilityExcerpt(description)
+
+	if !strings.Contains(excerpt, "Australian citizenship is required") {
+		t.Errorf("the eligibility statement was not lifted out: %q", excerpt)
+	}
+	if strings.Contains(truncateForPrompt(descriptionForPrompt(description), classificationDescriptionLimit),
+		"Australian citizenship") {
+		t.Error("the fixture no longer places the statement past the truncation, so it proves nothing")
+	}
+}
+
+// A posting that says nothing about work rights must add nothing to the prompt.
+func TestEligibilityExcerptIsEmptyWhenNothingIsStated(t *testing.T) {
+	description := "<p>We are hiring a graduate engineer to work on our platform team.</p>"
+
+	if excerpt := eligibilityExcerpt(description); excerpt != "" {
+		t.Errorf("expected no excerpt, got %q", excerpt)
+	}
+}
+
+func TestEligibilityExcerptQuotesAroundTheMatchNotFromTheStart(t *testing.T) {
+	description := "<p>" + strings.Repeat("filler ", 200) + "Applicants must hold a valid visa.</p>"
+
+	excerpt := eligibilityExcerpt(description)
+
+	if !strings.Contains(excerpt, "must hold a valid visa") {
+		t.Errorf("expected the clause around the match, got %q", excerpt)
+	}
+	if len(excerpt) > eligibilityExcerptLimit {
+		t.Errorf("excerpt is %d chars, over the %d budget", len(excerpt), eligibilityExcerptLimit)
+	}
+}
+
+// Three mentions in consecutive clauses are one passage, and quoting each
+// separately would spend the budget restating the same sentence.
+func TestEligibilityExcerptMergesOverlappingMentions(t *testing.T) {
+	description := "<p>We sponsor visas for citizens of any country, including permanent resident applicants.</p>"
+
+	if n := strings.Count(eligibilityExcerpt(description), " ... "); n != 0 {
+		t.Errorf("expected one merged window, got %d joins", n)
+	}
+}
+
+// However long the posting, and however often it mentions work rights, the
+// addition to the prompt stays bounded.
+func TestEligibilityExcerptStaysWithinItsBudget(t *testing.T) {
+	description := "<p>" + strings.Repeat("Australian citizens only. "+strings.Repeat("filler ", 80), 20) + "</p>"
+
+	if excerpt := eligibilityExcerpt(description); len(excerpt) > eligibilityExcerptLimit {
+		t.Errorf("excerpt is %d chars, over the %d budget", len(excerpt), eligibilityExcerptLimit)
+	}
+}
+
+// A classification is a gate, not a piece of writing. At the API's default
+// temperature the same listing came back both ways on consecutive calls.
+func TestEnrichmentAsksForADeterministicAnswer(t *testing.T) {
+	if deterministic != 0 {
+		t.Errorf("classification temperature is %v, want 0", deterministic)
+	}
+}

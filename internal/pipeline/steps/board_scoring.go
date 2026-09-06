@@ -22,6 +22,26 @@ var boardDisciplines = map[models.Discipline]bool{
 	models.CYBER:    true,
 }
 
+// boardJobTypes are the job types the board carries. The board is for students,
+// so OTHER -- everything that is neither a student nor a graduate role, which on
+// a technical listing means an experienced one -- is deliberately not here.
+//
+// It was opened to OTHER and then closed again after measuring what that did.
+// The listings were respectable, all at employers already on the company list:
+// 41 AWS roles, 16 CommBank, then IMC Trading, TikTok, Canva, Xero. The problem
+// was the proportion. 321 listings passed the gates against 100 slots, and the
+// board came out 19 intern, 21 graduate, 60 professional -- so a student opening
+// it would find it was mostly not for them, and every further professional
+// posting scraped would compete with a graduate one for the same slot.
+//
+// EOI and PRE_PENULTIMATE are absent for a different reason: they never reach a
+// stored document, because normalisation drops expressions of interest and no
+// source still produces the other.
+var boardJobTypes = map[models.JobType]bool{
+	models.INTERN:   true,
+	models.GRADUATE: true,
+}
+
 // aggregatorHosts are the job boards we scrape. An application URL pointing at
 // one of these means the employer never published a first-party posting, which
 // correlates with thinner, lower-quality ads.
@@ -95,7 +115,8 @@ func EvaluateForBoard(listing models.Listing) BoardVerdict {
 	verdict := BoardVerdict{}
 
 	// Tiered whether or not the listing is eligible, so the field is never
-	// absent on a scored document and no consumer has to guess.
+	// absent on a scored document and no consumer has to guess. An employer off
+	// the list is unranked by definition.
 	verdict.Tier = utils.CompanyTier(listing.Company.Name)
 
 	// --- Hard gates -------------------------------------------------------
@@ -115,7 +136,7 @@ func EvaluateForBoard(listing models.Listing) BoardVerdict {
 		verdict.Reasons = append(verdict.Reasons, "no Australian location")
 	}
 
-	if listing.Type == nil || (*listing.Type != models.INTERN && *listing.Type != models.GRADUATE) {
+	if listing.Type == nil || !boardJobTypes[*listing.Type] {
 		verdict.Reasons = append(verdict.Reasons, "not an intern or graduate role")
 	}
 
@@ -132,10 +153,6 @@ func EvaluateForBoard(listing models.Listing) BoardVerdict {
 	}
 
 	verdict.Eligible = len(verdict.Reasons) == 0
-
-	// Tiered regardless of eligibility, so the field is always populated and no
-	// consumer has to guess. An employer off the list is unranked by definition.
-	verdict.Tier = utils.CompanyTier(listing.Company.Name)
 
 	// --- Score ------------------------------------------------------------
 	// Employer recognition, from the board's own company list. Every eligible

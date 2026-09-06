@@ -1,11 +1,9 @@
 package utils
 
 import (
-	"fmt"
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 )
@@ -303,60 +301,17 @@ func SanitiseAustralianLocations(locations []models.LocationType, title string, 
 	return sanitised
 }
 
-var (
-	unmappedMu        sync.Mutex
-	unmappedLocations = map[string]map[string]int{}
-)
+var unmappedLocations unmappedTally
 
 // RecordUnmappedLocation notes a location string that no state or city table
 // matched, so the tables can be grown from real scrape output rather than
 // guesswork. Counts are reported by ReportUnmappedLocations.
 func RecordUnmappedLocation(source string, raw string) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return
-	}
-
-	unmappedMu.Lock()
-	defer unmappedMu.Unlock()
-
-	if unmappedLocations[source] == nil {
-		unmappedLocations[source] = map[string]int{}
-	}
-	unmappedLocations[source][raw]++
+	unmappedLocations.record(source, raw)
 }
 
 // ReportUnmappedLocations logs every location string that fell through to
 // OTHERS, most frequent first, and clears the tally.
 func ReportUnmappedLocations() {
-	unmappedMu.Lock()
-	defer unmappedMu.Unlock()
-
-	for source, counts := range unmappedLocations {
-		type entry struct {
-			raw   string
-			count int
-		}
-
-		entries := make([]entry, 0, len(counts))
-		for raw, count := range counts {
-			entries = append(entries, entry{raw, count})
-		}
-		sort.Slice(entries, func(i, j int) bool {
-			if entries[i].count != entries[j].count {
-				return entries[i].count > entries[j].count
-			}
-			return entries[i].raw < entries[j].raw
-		})
-
-		lines := make([]string, 0, len(entries))
-		for _, e := range entries {
-			lines = append(lines, fmt.Sprintf("%s (x%d)", e.raw, e.count))
-		}
-
-		Custom("%s: %d unmapped location strings -> OTHERS: %s",
-			source, len(entries), strings.Join(lines, ", "))
-	}
-
-	unmappedLocations = map[string]map[string]int{}
+	unmappedLocations.report("location", "OTHERS")
 }
