@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -132,5 +133,53 @@ func TestTruncate(t *testing.T) {
 	}
 	if got := truncate("a much longer string", 6); got != "a much" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// The bug this replaced cost a real board 29 of its 40 listings. Duplicates
+// arise when the same job is inserted twice under different fingerprints, so
+// the newer document is the bare re-insert and the older one is the enriched
+// one. Choosing by recency systematically deleted the enrichment.
+func TestTheBestEnrichedDuplicateSurvives(t *testing.T) {
+	older := time.Now().Add(-48 * time.Hour)
+
+	bare := docState{id: primitive.NewObjectID(), title: "bare re-insert", updatedAt: time.Now(), enrichment: 0}
+	enriched := docState{id: primitive.NewObjectID(), title: "enriched", updatedAt: older, enrichment: 5}
+
+	group := []docState{bare, enriched}
+	bestFirst(group)
+
+	if group[0].title != "enriched" {
+		t.Errorf("the newer but empty document survived; enrichment must win: %q", group[0].title)
+	}
+}
+
+// Among equally enriched duplicates the freshest is still the right one.
+func TestRecencyBreaksTiesBetweenEquallyEnrichedDuplicates(t *testing.T) {
+	newer := docState{id: primitive.NewObjectID(), title: "newer", updatedAt: time.Now(), enrichment: 3}
+	older := docState{id: primitive.NewObjectID(), title: "older", updatedAt: time.Now().Add(-time.Hour), enrichment: 3}
+
+	group := []docState{older, newer}
+	bestFirst(group)
+
+	if group[0].title != "newer" {
+		t.Errorf("expected the fresher of two equal documents, got %q", group[0].title)
+	}
+}
+
+// A dry run and the apply that follows it must choose the same survivor, or the
+// report describes a migration other than the one that runs.
+func TestSurvivorSelectionIsDeterministic(t *testing.T) {
+	at := time.Now()
+	a := docState{id: primitive.NewObjectID(), title: "a", updatedAt: at, enrichment: 2}
+	b := docState{id: primitive.NewObjectID(), title: "b", updatedAt: at, enrichment: 2}
+
+	first := []docState{a, b}
+	second := []docState{b, a}
+	bestFirst(first)
+	bestFirst(second)
+
+	if first[0].id != second[0].id {
+		t.Error("identical documents in a different input order chose different survivors")
 	}
 }

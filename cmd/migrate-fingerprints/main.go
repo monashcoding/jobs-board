@@ -58,6 +58,9 @@ type docState struct {
 	newLocations   []models.LocationType
 	title          string
 	updatedAt      time.Time
+	// enrichment is how much AI-derived work this document carries, and it is
+	// what decides which duplicate survives. See rekey.
+	enrichment int
 }
 
 func main() {
@@ -198,6 +201,7 @@ func loadStates(ctx context.Context, coll *mongo.Collection) []docState {
 			newLocations:   normalised.Locations,
 			title:          listing.Title,
 			updatedAt:      listing.UpdatedAt,
+			enrichment:     steps.EnrichmentScore(listing),
 		})
 	}
 	if err := cursor.Err(); err != nil {
@@ -248,14 +252,44 @@ func reportDuplicates(groups map[string][]docState) {
 }
 
 // rekey rewrites fingerprints and company names in place. Within a collision
-// group the most recently updated document survives; the others keep their old
+// group the best-enriched document survives; the others keep their old
 // fingerprint (so they cannot collide with the survivor on the next upsert) and
 // are marked superseded for phase two to remove.
+//
+// The survivor used to be the most recently updated, which is a different
+// question with a different answer. Duplicates arise when the same job is
+// inserted twice under different fingerprints, and the second insert is by
+// definition the newer one while the first is the one that has been enriched --
+// so recency systematically picked the emptier document. A real run of this
+// collapsed 2228 documents to 1651 and took the board from 40 eligible
+// listings to 11, not because anything stopped qualifying but because 29
+// listings lost the classification that qualified them. Re-enriching them
+// costs another pass over OpenAI; the threads closed in the meantime cannot be
+// got back.
+//
+// Recency is kept as the tiebreak, so among equally enriched duplicates the
+// freshest still wins, and the id breaks that in turn so a dry run and the
+// apply that follows it cannot disagree.
+// bestFirst orders a collision group so the document that should survive is
+// first. Its own function so the rule can be asserted without a database.
+func bestFirst(group []docState) {
+	sort.Slice(group, func(i, j int) bool {
+		x, y := group[i], group[j]
+		if x.enrichment != y.enrichment {
+			return x.enrichment > y.enrichment
+		}
+		if !x.updatedAt.Equal(y.updatedAt) {
+			return x.updatedAt.After(y.updatedAt)
+		}
+		return x.id.Hex() < y.id.Hex()
+	})
+}
+
 func rekey(ctx context.Context, coll *mongo.Collection, groups map[string][]docState) {
 	updated, superseded, failed := 0, 0, 0
 
 	for fingerprint, group := range groups {
-		sort.Slice(group, func(i, j int) bool { return group[i].updatedAt.After(group[j].updatedAt) })
+		bestFirst(group)
 
 		for i, state := range group {
 			update := bson.M{"company.name": state.newCompany}

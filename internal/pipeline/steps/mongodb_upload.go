@@ -215,6 +215,41 @@ func unseenListingUpdate() bson.M {
 	return bson.M{"outdated": true, "board_eligible": false}
 }
 
+// expiryFilter selects the listings this run should retire: ones it did not see,
+// from the sources it did see. Both halves are required. Without the source
+// clause a run covering one scraper retires the entire rest of the board.
+func expiryFilter(seenFingerprints []string, sources []models.Source) bson.M {
+	return bson.M{
+		"fingerprint": bson.M{"$nin": seenFingerprints},
+		"source":      bson.M{"$in": sources},
+	}
+}
+
+// sourcesInRun returns the distinct sources that produced listings in this run,
+// which is what bounds the expiry sweep above.
+//
+// A merged listing carries MULTIPLE rather than any one source, so it is only
+// ever expired by a run that itself produced a merged listing. That is
+// conservative in the direction this function exists to be conservative in.
+func sourcesInRun(listings []models.Listing) []models.Source {
+	seen := map[models.Source]struct{}{}
+	sources := []models.Source{}
+
+	for _, listing := range listings {
+		if listing.Source == "" {
+			continue
+		}
+		if _, dup := seen[listing.Source]; dup {
+			continue
+		}
+		seen[listing.Source] = struct{}{}
+		sources = append(sources, listing.Source)
+	}
+
+	sort.Slice(sources, func(i, j int) bool { return sources[i] < sources[j] })
+	return sources
+}
+
 // ContentHash fingerprints what this run would write for a listing. Documents
 // whose hash is unchanged are skipped entirely rather than rewritten with a
 // fresh updated_at.
@@ -357,11 +392,29 @@ func (s *MongoDBUploadStep) Process(ctx context.Context, listings []models.Listi
 	// 27 of the stragglers were one employer, which is the exact pile-up the
 	// per-employer cap exists to prevent. A listing that is gone from the
 	// source cannot belong on the board.
-	_, err := activeColl.UpdateMany(ctx,
-		bson.M{"fingerprint": bson.M{"$nin": seenFingerprints}},
-		bson.M{"$set": unseenListingUpdate()})
+	//
+	// Scoped to the sources this run actually returned listings for. Unscoped,
+	// "the scraper did not see it" and "this scraper did not run" were the same
+	// sentence, and the second is the common one: RUN_SCRAPERS=Prosple is a
+	// normal way to work, and it made every LinkedIn and GradConnection listing
+	// unseen and took the whole board down in one UpdateMany. A blocked or
+	// rate-limited source did the same thing without anyone choosing it.
+	//
+	// Read off the listings rather than RUN_SCRAPERS, because what matters is
+	// which sources produced results, not which were asked to. A source that
+	// ran and returned nothing expires nothing, which leaves a closed listing
+	// on the board for one more run -- the right way to be wrong.
+	sources := sourcesInRun(listings)
+
+	expired, err := activeColl.UpdateMany(ctx,
+		expiryFilter(seenFingerprints, sources), bson.M{"$set": unseenListingUpdate()})
 	if err != nil {
 		return nil, fmt.Errorf("failed to mark existing jobs: %w", err)
+	}
+
+	if expired != nil {
+		utils.Log("Upload: %d listings from %v were not seen this run and are no longer eligible. "+
+			"Listings from every other source are untouched.", expired.ModifiedCount, sources)
 	}
 
 	// Skip documents this run would rewrite identically. Each write is a change

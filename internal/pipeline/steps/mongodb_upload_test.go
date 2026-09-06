@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"go.mongodb.org/mongo-driver/bson"
+
 	"github.com/monashcoding/mploy-golang-core/internal/models"
 	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
@@ -348,5 +350,74 @@ func TestReclassificationMarkIsNotPartOfTheContentHash(t *testing.T) {
 	delete(set, "needs_reclassification")
 	if ContentHash(set) != withMark {
 		t.Error("needs_reclassification must be excluded from the content hash")
+	}
+}
+
+// The failure this exists to prevent: a run covering one scraper retiring the
+// entire rest of the board. RUN_SCRAPERS=Prosple is a normal way to work, and
+// unscoped, "the scraper did not see it" and "this scraper did not run" were
+// the same sentence.
+func TestExpiryIsScopedToTheSourcesThatRan(t *testing.T) {
+	prosple := listing("Graduate Engineer", "Atlassian", "https://apply.example.com", models.VIC)
+	prosple.Source = models.PROSPLE
+
+	sources := sourcesInRun([]models.Listing{prosple})
+	if len(sources) != 1 || sources[0] != models.PROSPLE {
+		t.Fatalf("expected only PROSPLE, got %v", sources)
+	}
+
+	filter := expiryFilter([]string{"fp1"}, sources)
+
+	clause, ok := filter["source"].(bson.M)
+	if !ok {
+		t.Fatal("the expiry filter must constrain source, or a partial run clears the whole board")
+	}
+	in, ok := clause["$in"].([]models.Source)
+	if !ok || len(in) != 1 || in[0] != models.PROSPLE {
+		t.Errorf("expiry would reach sources this run never covered: %v", clause["$in"])
+	}
+}
+
+// A source that ran and returned nothing must expire nothing. Being blocked or
+// rate-limited is indistinguishable here from having no jobs left, and leaving
+// a closed listing up for one more run is the right way to be wrong.
+func TestASourceThatReturnedNothingExpiresNothing(t *testing.T) {
+	prosple := listing("Graduate Engineer", "Atlassian", "https://apply.example.com", models.VIC)
+	prosple.Source = models.PROSPLE
+
+	for _, source := range sourcesInRun([]models.Listing{prosple}) {
+		if source == models.LINKEDIN {
+			t.Fatal("a source with no listings in the run must not be swept")
+		}
+	}
+}
+
+// Both halves of the filter are load-bearing: without the fingerprint clause a
+// run would retire the very listings it just scraped.
+func TestExpirySkipsTheListingsTheRunSaw(t *testing.T) {
+	filter := expiryFilter([]string{"fp1", "fp2"}, []models.Source{models.PROSPLE})
+
+	clause, ok := filter["fingerprint"].(bson.M)
+	if !ok {
+		t.Fatal("the expiry filter must exclude the fingerprints this run saw")
+	}
+	nin, ok := clause["$nin"].([]string)
+	if !ok || len(nin) != 2 {
+		t.Errorf("expected both seen fingerprints to be excluded, got %v", clause["$nin"])
+	}
+}
+
+func TestSourcesInRunDeduplicatesAndIgnoresBlanks(t *testing.T) {
+	a := listing("A", "Atlassian", "https://a.example.com", models.VIC)
+	a.Source = models.LINKEDIN
+	b := listing("B", "Canva", "https://b.example.com", models.NSW)
+	b.Source = models.LINKEDIN
+	c := listing("C", "Xero", "https://c.example.com", models.VIC)
+	c.Source = ""
+
+	sources := sourcesInRun([]models.Listing{a, b, c})
+
+	if len(sources) != 1 || sources[0] != models.LINKEDIN {
+		t.Errorf("expected one deduplicated source and no blank, got %v", sources)
 	}
 }

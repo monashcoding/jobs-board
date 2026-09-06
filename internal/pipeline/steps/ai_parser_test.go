@@ -1233,3 +1233,42 @@ func TestAFullyEnrichedListingWithoutRightsStillSkips(t *testing.T) {
 		t.Error("a listing with no rights and no marker must not trigger a call")
 	}
 }
+
+func TestEnrichmentScoreCountsWhatIsExpensiveToRederive(t *testing.T) {
+	summary := "Apply your Go skills on payment systems"
+	desc := "Build payment systems in Go."
+	jobType := models.GRADUATE
+	empty := models.JobType("")
+
+	full := models.Listing{
+		OneLinerDesc:          &summary,
+		IndustryField:         models.BIG_TECH,
+		Type:                  &jobType,
+		Discipline:            models.SOFTWARE,
+		WorkingRights:         []models.WorkingRight{models.INTERNATIONAL},
+		Description:           &desc,
+		SourceDescriptionHash: "abc123",
+	}
+
+	if got := EnrichmentScore(full); got != 6 {
+		t.Errorf("a fully enriched listing scored %d, want 6", got)
+	}
+	if got := EnrichmentScore(models.Listing{}); got != 0 {
+		t.Errorf("a bare listing scored %d, want 0", got)
+	}
+
+	// A pointer to "" is not a job type. Documents in that state exist, and
+	// counting them would let one beat a document with a real classification.
+	if EnrichmentScore(models.Listing{Type: &empty}) != 0 {
+		t.Error("an empty job type must not count as enrichment")
+	}
+	if EnrichmentScore(models.Listing{Type: &jobType}) != 1 {
+		t.Error("a real job type must count")
+	}
+
+	// A formatted description only counts when the hash that proves what
+	// produced it is there too; without it the description cannot be reused.
+	if EnrichmentScore(models.Listing{Description: &desc}) != 0 {
+		t.Error("a description with no source hash must not count")
+	}
+}

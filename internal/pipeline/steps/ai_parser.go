@@ -241,29 +241,55 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 	}
 }
 
-// enrichmentScore counts how many cacheable fields a stored document actually
-// carries, so the richest of a set of colliding documents wins deterministically.
-func enrichmentScore(doc cachedEnrichment) int {
+// EnrichmentScore counts how many of the expensive, AI-derived fields a listing
+// actually carries. It answers one question: given two documents describing the
+// same job, which is the one worth keeping?
+//
+// Two callers need that answer and must not disagree about it. The enrichment
+// cache picks between documents sharing a fingerprint, and the fingerprint
+// migration picks which of a set of duplicates survives while the rest are
+// deleted. The migration used to choose the most recently updated instead,
+// which is a different question with a different answer: a bare re-insert is
+// newer than the enriched document it duplicates, so collapsing duplicates
+// threw away the enrichment and took the listings off the board with it.
+func EnrichmentScore(listing models.Listing) int {
 	score := 0
-	if doc.OneLinerDesc != nil && *doc.OneLinerDesc != "" {
+	if listing.OneLinerDesc != nil && *listing.OneLinerDesc != "" {
 		score++
 	}
-	if doc.IndustryField != "" {
+	if listing.IndustryField != "" {
 		score++
 	}
-	if doc.Type != nil {
+	// A pointer to "" is not a job type. Documents in that state exist, and
+	// counting them as enriched would let one win against a document carrying a
+	// real classification.
+	if listing.Type != nil && *listing.Type != "" {
 		score++
 	}
-	if doc.Discipline != "" {
+	if listing.Discipline != "" {
 		score++
 	}
-	if len(doc.WorkingRights) > 0 {
+	if len(listing.WorkingRights) > 0 {
 		score++
 	}
-	if doc.SourceDescriptionHash != "" && doc.Description != nil && *doc.Description != "" {
+	if listing.SourceDescriptionHash != "" && listing.Description != nil && *listing.Description != "" {
 		score++
 	}
 	return score
+}
+
+// enrichmentScore scores a cached document, which carries the same fields under
+// a narrower projection.
+func enrichmentScore(doc cachedEnrichment) int {
+	return EnrichmentScore(models.Listing{
+		OneLinerDesc:          doc.OneLinerDesc,
+		IndustryField:         doc.IndustryField,
+		Type:                  doc.Type,
+		Discipline:            doc.Discipline,
+		WorkingRights:         doc.WorkingRights,
+		Description:           doc.Description,
+		SourceDescriptionHash: doc.SourceDescriptionHash,
+	})
 }
 
 // reuseStoredDescription swaps in the previously formatted description when the
