@@ -67,6 +67,8 @@ type candidate struct {
 
 func main() {
 	apply := flag.Bool("apply", false, "write changes; without this the tool only reports what it would do")
+	includeBoard := flag.Bool("include-board", false,
+		"also mark listings currently on the board; see the note on load() before using this")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -91,7 +93,7 @@ func main() {
 
 	coll := mongodb.GetDatabase().Collection("active_jobs")
 
-	candidates := load(ctx, coll)
+	candidates := load(ctx, coll, *includeBoard)
 	if len(candidates) == 0 {
 		utils.Success("Nothing to mark: every document already carries a classification made under the current prompt.")
 		return
@@ -107,15 +109,32 @@ func main() {
 
 // load returns the documents worth re-asking about, and reports what it found.
 //
-// Board-eligible listings are excluded. They are already posted, and a fresh
-// classification could move one to OTHER and take it off the board -- trading a
-// listing a student can see today for a slightly better label. The listings this
-// is meant to rescue are the ones sitting off the board, which is where every
-// junior role misfiled as OTHER already is.
-func load(ctx context.Context, coll *mongo.Collection) []candidate {
-	filter := bson.M{
-		"board_eligible":         bson.M{"$ne": true},
-		"needs_reclassification": bson.M{"$ne": true},
+// Board-eligible listings are excluded by default. They are already posted, and
+// a fresh classification could move one to OTHER, which now takes it off the
+// board entirely -- trading a listing a student can see today for a better
+// label. Every junior role misfiled as OTHER is off the board already, so the
+// default still reaches all of them.
+//
+// The cost of that default is the listings on the board with no working rights:
+// 30 of the 40, all from LinkedIn, which publishes none. They are rescraped
+// every run, but the AI parser skips any listing that is already classified, so
+// they are never re-asked and will carry no rights indefinitely -- which is the
+// thing an international student most needs the board to tell them.
+//
+// -include-board covers them, at that risk. It is a deliberate trade rather
+// than a default: a thread whose listing turns out to be professional-level is
+// closed by the bot's reconciliation, which is visible and recoverable, but it
+// is still a listing disappearing from under someone.
+func load(ctx context.Context, coll *mongo.Collection, includeBoard bool) []candidate {
+	// "Never marked" rather than "not currently marked". The upload step clears
+	// the mark by setting it to false, not by removing it, so $ne:true would
+	// match every document a previous pass had already answered -- and most of
+	// them still have no working rights, because most postings genuinely say
+	// nothing about work rights. Re-running the tool would re-mark them and
+	// re-send them to OpenAI, every time, forever.
+	filter := bson.M{"needs_reclassification": bson.M{"$exists": false}}
+	if !includeBoard {
+		filter["board_eligible"] = bson.M{"$ne": true}
 	}
 
 	cursor, err := coll.Find(ctx, filter, options.Find().SetProjection(bson.M{
@@ -167,7 +186,11 @@ func load(ctx context.Context, coll *mongo.Collection) []candidate {
 		utils.Fatal("Cursor error reading active_jobs: %v", err)
 	}
 
-	utils.Log("Documents scanned (not on the board, not already marked): %d", scanned)
+	scope := "not on the board, never marked before"
+	if includeBoard {
+		scope = "never marked before, the board included"
+	}
+	utils.Log("Documents scanned (%s): %d", scope, scanned)
 	utils.Log("  ambiguous seniority only:      %d", seniority)
 	utils.Log("  no working rights only:        %d", rights)
 	utils.Log("  both:                          %d", both)
