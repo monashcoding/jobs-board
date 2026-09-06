@@ -168,6 +168,7 @@ func buildListingSet(listing models.Listing, fingerprint string, version string,
 		set["discipline"] = listing.Discipline
 		set["board_score"] = listing.BoardScore
 		set["board_eligible"] = listing.BoardEligible
+		set["company_tier"] = listing.CompanyTier
 	}
 
 	if listing.OpenDate != nil {

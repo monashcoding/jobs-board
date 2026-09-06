@@ -121,6 +121,7 @@ type Listing struct {
 	Discipline            Discipline     `bson:"discipline" json:"discipline"`
 	BoardScore            int            `bson:"board_score" json:"board_score"`
 	BoardEligible         bool           `bson:"board_eligible" json:"board_eligible"`
+	CompanyTier           string         `bson:"company_tier" json:"company_tier"`
 	WorkingRights         []WorkingRight `bson:"working_rights" json:"working_rights"`
 	IsSponsored           bool           `bson:"is_sponsored" json:"is_sponsored"`
 	CreatedAt             time.Time      `bson:"created_at" json:"created_at"`

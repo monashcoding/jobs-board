@@ -54,6 +54,12 @@ var recognisedTechIndustries = map[models.IndustryField]bool{
 type BoardVerdict struct {
 	Score    int
 	Eligible bool
+	// Tier is how prominent the employer is. It is a separate axis from Score,
+	// which blends industry, recency and the rest: a thin listing at a headline
+	// employer can score below a strong one at an unknown employer, which is
+	// backwards for ordering by recognition. The bot's weekly recap shows only
+	// a handful of the week's postings and uses this to choose which.
+	Tier string
 	// Reasons explains the verdict. For an ineligible listing it names every
 	// gate that failed, so a listing missing from the board can be explained
 	// without re-running the pipeline.
@@ -96,6 +102,10 @@ func EvaluateForBoard(listing models.Listing) BoardVerdict {
 	}
 
 	verdict.Eligible = len(verdict.Reasons) == 0
+
+	// Tiered regardless of eligibility, so the field is always populated and no
+	// consumer has to guess. An employer off the list is unranked by definition.
+	verdict.Tier = utils.CompanyTier(listing.Company.Name)
 
 	// --- Score ------------------------------------------------------------
 	if listing.IsSponsored || notableIndustries[listing.IndustryField] {
@@ -214,6 +224,7 @@ func (s *BoardScoringStep) Process(ctx context.Context, listings []models.Listin
 		verdict := EvaluateForBoard(listing)
 		listings[i].BoardScore = verdict.Score
 		listings[i].BoardEligible = verdict.Eligible
+		listings[i].CompanyTier = verdict.Tier
 
 		if verdict.Eligible {
 			passed++

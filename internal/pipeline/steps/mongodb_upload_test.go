@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 // listing builds a listing whose source URL is derived from its title, matching
@@ -167,6 +168,7 @@ func TestBuildListingSetWritesPresentEnrichment(t *testing.T) {
 		Discipline:    models.SOFTWARE,
 		BoardScore:    7,
 		BoardEligible: true,
+		CompanyTier:   utils.TierHeadline,
 	}
 
 	set := buildListingSet(listing, "fp", "1.0.0", time.Now())
@@ -182,6 +184,11 @@ func TestBuildListingSetWritesPresentEnrichment(t *testing.T) {
 	}
 	if set["board_score"] != 7 {
 		t.Errorf("board_score not written: %v", set["board_score"])
+	}
+	// The bot orders its weekly recap by this, so it has to survive the upload
+	// alongside the score it is scored with.
+	if set["company_tier"] != utils.TierHeadline {
+		t.Errorf("company_tier not written: %v", set["company_tier"])
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
 )
 
 func boardListing(mutate func(*models.Listing)) models.Listing {
@@ -313,6 +314,51 @@ func TestApplyPerEmployerLimitDisabled(t *testing.T) {
 	for _, l := range listings {
 		if !l.BoardEligible {
 			t.Error("a non-positive cap must leave eligibility untouched")
+		}
+	}
+}
+
+// The tier is a separate axis from the score. The bot's weekly recap shows only
+// a handful of the week's postings and orders them by this, so it has to be set
+// wherever the score is.
+func TestBoardScoringStepTiersEveryListing(t *testing.T) {
+	listings := []models.Listing{
+		boardListing(nil),
+		boardListing(func(l *models.Listing) { l.Company.Name = "Deloitte" }),
+		// Off the company list, so ineligible -- but still tiered, so the field
+		// is never absent.
+		boardListing(func(l *models.Listing) { l.Company.Name = "The Intern Group" }),
+	}
+
+	result, err := NewBoardScoringStep().Process(context.Background(), listings)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{utils.TierHeadline, utils.TierMajor, utils.TierUnranked}
+	for i, tier := range want {
+		if result[i].CompanyTier != tier {
+			t.Errorf("listing %d (%s): CompanyTier = %q, want %q",
+				i, result[i].Company.Name, result[i].CompanyTier, tier)
+		}
+	}
+}
+
+// Every eligible listing is at an employer on the board's company list, and the
+// tier lists cover that list, so an eligible listing can never come out
+// unranked. The bot relies on this: an untiered posting sorts last.
+func TestEligibleListingsAreNeverUnranked(t *testing.T) {
+	for _, company := range []string{
+		"Atlassian", "Deloitte", "Optiver", "Thales Australia", "AGL", "NEXTDC",
+	} {
+		verdict := EvaluateForBoard(boardListing(func(l *models.Listing) {
+			l.Company.Name = company
+		}))
+		if !verdict.Eligible {
+			t.Fatalf("%q should be board eligible", company)
+		}
+		if verdict.Tier == utils.TierUnranked {
+			t.Errorf("%q is eligible but untiered", company)
 		}
 	}
 }
