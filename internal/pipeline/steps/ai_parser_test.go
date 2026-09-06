@@ -1160,3 +1160,76 @@ func TestEnrichmentAsksForADeterministicAnswer(t *testing.T) {
 		t.Errorf("classification temperature is %v, want 0", deterministic)
 	}
 }
+
+// A listing already on the board is re-asked for its working rights and keeps
+// the classification that put it there. Job type is a hard board gate, so
+// re-deriving it could only agree or take a live listing off the board.
+func TestBoardListingGainsRightsWithoutRiskingItsClassification(t *testing.T) {
+	// The model is told the role is professional-level and restricted. Only the
+	// second of those may reach the listing.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":`+
+			`"{\"industry\":\"BIG_TECH\",\"job_type\":\"OTHER\",\"discipline\":\"DATA\",`+
+			`\"working_rights\":[\"AUS_CITIZEN_PR\"],\"summary\":\"s\"}"}}]}`)
+	}))
+	defer server.Close()
+
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("OPENAI_BASE_URL", server.URL)
+
+	jobType := models.GRADUATE
+	summary := "Apply your Go skills on payment systems"
+	desc := "Build payment systems in Go."
+	listing := models.Listing{
+		Title:         "Graduate Software Engineer",
+		Company:       models.Company{Name: "Atlassian"},
+		SourceURLs:    []string{"https://example.com/jobs/1"},
+		Description:   &desc,
+		IndustryField: models.BIG_TECH,
+		Type:          &jobType,
+		Discipline:    models.SOFTWARE,
+		OneLinerDesc:  &summary,
+	}
+
+	step := NewAiParserStep()
+	step.rightsOnly = map[string]bool{GenerateListingFingerprint(listing): true}
+
+	got, err := step.EnrichListing(context.Background(), listing)
+	if err != nil {
+		t.Fatalf("EnrichListing returned error: %v", err)
+	}
+
+	if got.Type == nil || *got.Type != models.GRADUATE {
+		t.Errorf("job type was re-derived, which can take a live listing off the board: %v", got.Type)
+	}
+	if got.Discipline != models.SOFTWARE {
+		t.Errorf("discipline was re-derived: %v", got.Discipline)
+	}
+	if len(got.WorkingRights) != 1 || got.WorkingRights[0] != models.AUS_CITIZEN_PR {
+		t.Errorf("the rights the call was made for were not taken: %v", got.WorkingRights)
+	}
+}
+
+// Without the marker the same fully-enriched listing must still skip, or every
+// listing with no working rights becomes a call on every run forever.
+func TestAFullyEnrichedListingWithoutRightsStillSkips(t *testing.T) {
+	jobType := models.GRADUATE
+	summary := "Apply your Go skills on payment systems"
+	listing := models.Listing{
+		Title:         "Graduate Software Engineer",
+		IndustryField: models.BIG_TECH,
+		Type:          &jobType,
+		Discipline:    models.SOFTWARE,
+		OneLinerDesc:  &summary,
+	}
+
+	step := NewAiParserStep()
+	if _, err := step.EnrichListing(context.Background(), listing); err != nil {
+		t.Fatalf("EnrichListing returned error: %v", err)
+	}
+
+	if step.skippedJobs != 1 {
+		t.Error("a listing with no rights and no marker must not trigger a call")
+	}
+}

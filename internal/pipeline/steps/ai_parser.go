@@ -37,6 +37,11 @@ type AIParserStep struct {
 	sleepDuration time.Duration
 	mongodb       *database.MongoDB
 	budget        *tokenBudget
+	// rightsOnly holds the fingerprints of listings that must be re-sent for
+	// their working rights while keeping the classification they already have.
+	// Built by applyCachedEnrichment, which runs to completion before any
+	// enrichment goroutine starts, and only read afterwards.
+	rightsOnly map[string]bool
 }
 
 // NewAiParserStep builds the step without a database handle, so it re-derives
@@ -70,6 +75,7 @@ type cachedEnrichment struct {
 	Discipline            models.Discipline     `bson:"discipline"`
 	WorkingRights         []models.WorkingRight `bson:"working_rights"`
 	NeedsReclassification bool                  `bson:"needs_reclassification"`
+	BoardEligible         bool                  `bson:"board_eligible"`
 	Fingerprint           string                `bson:"fingerprint"`
 	Description           *string               `bson:"description"`
 	SourceDescriptionHash string                `bson:"source_description_hash"`
@@ -110,6 +116,7 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 			"discipline":              1,
 			"working_rights":          1,
 			"needs_reclassification":  1,
+			"board_eligible":          1,
 			"description":             1,
 			"source_description_hash": 1,
 		}))
@@ -138,7 +145,7 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 	}
 
 	var reusedOneLiner, reusedClassification, reusedDescription, reusedRights int
-	var pendingReclassification int
+	var pendingReclassification, pendingRights int
 
 	for i := range listings {
 		doc, ok := cache[fingerprints[i]]
@@ -166,7 +173,24 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 		//
 		// The one-liner and the formatted description below are still reused.
 		// Neither is what the mark is asking to redo, and both are expensive.
-		if doc.NeedsReclassification {
+		// A listing already on the board is re-asked for its working rights
+		// alone, and keeps the classification it has. Job type is a hard board
+		// gate, so re-deriving it here can only do one of two things: agree, or
+		// take a listing off the board that a student can see today. Nothing
+		// about the job has changed -- only our label for it -- and the reason
+		// these were marked was the rights, not the type.
+		//
+		// Everything off the board is re-derived in full. That is where a
+		// junior role misfiled as OTHER sits, and it has nothing to lose.
+		if doc.NeedsReclassification && doc.BoardEligible {
+			if s.rightsOnly == nil {
+				s.rightsOnly = map[string]bool{}
+			}
+			s.rightsOnly[fingerprints[i]] = true
+			pendingRights++
+		}
+
+		if doc.NeedsReclassification && !doc.BoardEligible {
 			pendingReclassification++
 		} else if doc.IndustryField != "" && doc.Type != nil && doc.Discipline != "" {
 			if listings[i].IndustryField == "" {
@@ -210,6 +234,10 @@ func (s *AIParserStep) applyCachedEnrichment(ctx context.Context, listings []mod
 	if pendingReclassification > 0 {
 		utils.Log("%d listings are marked for reclassification and will be re-sent to OpenAI.",
 			pendingReclassification)
+	}
+	if pendingRights > 0 {
+		utils.Log("%d of the marked listings are already on the board, so they are re-sent for "+
+			"their working rights and keep the classification that put them there.", pendingRights)
 	}
 }
 
@@ -587,7 +615,13 @@ func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing
 	summarised := (listing.OneLinerDesc != nil && strings.TrimSpace(*listing.OneLinerDesc) != "") ||
 		!hasDescription(listing)
 
-	if classified && summarised {
+	// A listing on the board that was marked for reclassification arrives fully
+	// classified, because its classification is deliberately preserved, so it
+	// would otherwise skip here -- and the rights it was marked for would never
+	// be fetched. This is the only thing that makes the call happen for it.
+	wantsRights := len(listing.WorkingRights) == 0 && s.rightsOnly[GenerateListingFingerprint(listing)]
+
+	if classified && summarised && !wantsRights {
 		atomic.AddInt32(&s.skippedJobs, 1)
 		utils.Debug("Enrichment already known for %q, skipping API call.", listing.Title)
 		return listing, nil
@@ -626,22 +660,23 @@ func (s *AIParserStep) EnrichListing(ctx context.Context, listing models.Listing
 		listing.IndustryField = industry
 		listing.Type = &jobType
 		listing.Discipline = discipline
+	}
 
-		// Working rights ride along on the classification, and are taken only
-		// when the source supplied none. A source that states them is
-		// authoritative -- GradConnection and Prosple both publish the
-		// employer's own list -- whereas this is read off prose. LinkedIn
-		// supplies none at all, and it is three quarters of the board, so
-		// before this every second listing a student opened said nothing about
-		// whether they could apply.
-		//
-		// Deliberately tied to the classification call rather than given a
-		// trigger of its own: most postings say nothing about work rights, so
-		// a listing that legitimately has none would otherwise be re-sent to
-		// OpenAI on every run forever, for an empty array each time.
-		if len(listing.WorkingRights) == 0 {
-			listing.WorkingRights = parseWorkingRights(content, listing.Title)
-		}
+	// Working rights are taken from any reply we already have, and only when
+	// the source supplied none. A source that states them is authoritative --
+	// GradConnection and Prosple both publish the employer's own list --
+	// whereas this is read off prose. LinkedIn supplies none at all, and it is
+	// three quarters of the board, so before this every second listing a
+	// student opened said nothing about whether they could apply.
+	//
+	// Reading them here rather than inside the branch above is what lets a
+	// board listing be re-asked for its rights without its classification being
+	// touched. It adds no calls: what triggers a call is decided above, and
+	// this only reads a reply that already exists. Most postings say nothing
+	// about work rights, so a listing that legitimately has none must never
+	// become a reason to call OpenAI again on the next run.
+	if len(listing.WorkingRights) == 0 {
+		listing.WorkingRights = parseWorkingRights(content, listing.Title)
 	}
 
 	// Only keep a summary that had a description behind it. The schema makes

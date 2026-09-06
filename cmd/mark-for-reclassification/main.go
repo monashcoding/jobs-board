@@ -68,7 +68,7 @@ type candidate struct {
 func main() {
 	apply := flag.Bool("apply", false, "write changes; without this the tool only reports what it would do")
 	includeBoard := flag.Bool("include-board", false,
-		"also mark listings currently on the board; see the note on load() before using this")
+		"also mark listings currently on the board, which are then re-asked for their working rights only")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -118,13 +118,14 @@ func main() {
 // The cost of that default is the listings on the board with no working rights:
 // 30 of the 40, all from LinkedIn, which publishes none. They are rescraped
 // every run, but the AI parser skips any listing that is already classified, so
-// they are never re-asked and will carry no rights indefinitely -- which is the
-// thing an international student most needs the board to tell them.
+// they are never re-asked and would carry no rights indefinitely -- which is
+// the thing an international student most needs the board to tell them.
 //
-// -include-board covers them, at that risk. It is a deliberate trade rather
-// than a default: a thread whose listing turns out to be professional-level is
-// closed by the bot's reconciliation, which is visible and recoverable, but it
-// is still a listing disappearing from under someone.
+// -include-board covers them, and carries no risk to the board. A marked
+// listing that is already eligible is re-asked for its working rights only:
+// the AI parser keeps the classification that put it there, so the gate is
+// never re-evaluated and no live thread can be closed by this. See
+// applyCachedEnrichment.
 func load(ctx context.Context, coll *mongo.Collection, includeBoard bool) []candidate {
 	// "Never marked" rather than "not currently marked". The upload step clears
 	// the mark by setting it to false, not by removing it, so $ne:true would
