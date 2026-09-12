@@ -205,6 +205,10 @@ func initializePipelineSteps(mongodb *database.MongoDB, uploadStep *steps.MongoD
 		steps.NewAiParserStepWithCache(mongodb),
 		steps.NewBoardScoringStep(),
 		uploadStep,
+		// After the upload, so it reconciles the board against a collection
+		// that already holds this run's listings. BoardScoring caps the run;
+		// this caps the board.
+		steps.NewBoardReconciliationStep(mongodb),
 	}
 
 	// Filter steps based on configuration
