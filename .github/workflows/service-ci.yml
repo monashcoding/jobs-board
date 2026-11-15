@@ -1,0 +1,33 @@
+name: Service CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/service/**"
+      - ".github/workflows/service-ci.yml"
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/service/go.mod
+          cache-dependency-path: apps/service/go.sum
+
+      - name: Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Code is not formatted, please run 'go fmt ./...'"
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: Build
+        run: go build ./...

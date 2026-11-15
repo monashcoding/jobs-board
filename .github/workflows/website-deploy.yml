@@ -10,12 +10,12 @@ on:
     branches: [development]
     # Only rebuild when something that affects the image changes.
     paths:
-      - "frontend/**"
-      - ".github/workflows/deploy.yml"
+      - "apps/website/**"
+      - ".github/workflows/website-deploy.yml"
   workflow_dispatch: {} # allow manual "Run workflow"
 
 env:
-  # NOTE: not ${{ github.repository }} — that's monashcoding/mploy-app. The
+  # NOTE: not ${{ github.repository }} — that's monashcoding/jobs-board. The
   # published image name is deliberately just "mploy".
   IMAGE: ghcr.io/monashcoding/mploy
 
@@ -51,10 +51,10 @@ jobs:
       - name: Build & push (linux/arm64)
         uses: docker/build-push-action@v6
         with:
-          # Build context is frontend/ — the webapp is a self-contained npm app
-          # (not a workspace), so npm ci resolves from frontend/package-lock.json.
-          context: ./frontend
-          file: ./frontend/Dockerfile
+          # Build context is apps/website/ — the webapp is a self-contained npm app
+          # (not a workspace), so npm ci resolves from apps/website/package-lock.json.
+          context: ./apps/website
+          file: ./apps/website/Dockerfile
           platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

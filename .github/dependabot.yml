@@ -1,8 +1,8 @@
 version: 2
 updates:
-  # Frontend npm dependencies
+  # Website npm dependencies
   - package-ecosystem: "npm"
-    directory: "/frontend"
+    directory: "/apps/website"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
@@ -17,6 +17,18 @@ updates:
     ignore:
       - dependency-name: "@types/*"
         update-types: ["version-update:semver-patch"]
+
+  # Discord bot Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/apps/discord-bot"
+    schedule:
+      interval: "weekly"
+
+  # Service Go modules
+  - package-ecosystem: "gomod"
+    directory: "/apps/service"
+    schedule:
+      interval: "weekly"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
