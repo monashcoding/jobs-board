@@ -8,6 +8,7 @@ from bson import ObjectId
 from pydantic import BaseModel, Field, field_validator
 
 from src.backend.mongo.base import BaseCollection
+from src.backend.mongo.collections.job_schema import LISTING_COLLECTION
 from src.backend.mongo.document import MongoDocument
 
 _log: Final[logging.Logger] = logging.getLogger(__name__)
@@ -20,6 +21,15 @@ class Company(BaseModel):
 
 
 class JobDocument(MongoDocument):
+    """A listing as the bot reads it.
+
+    The fields and their values are defined in schema/job.schema.json, which
+    also generates job_schema.py. Every field here is optional because the bot
+    must keep working on documents written before a field existed;
+    tests/test_job_schema.py fails if this model names a field the schema does
+    not have.
+    """
+
     fingerprint: str | None = Field(default=None)
     application_url: str | None = Field(default=None)
     board_eligible: bool | None = Field(default=None)
@@ -55,7 +65,7 @@ class JobDocument(MongoDocument):
 
 
 class JobDocumentCollection(BaseCollection[JobDocument]):
-    collection_name = "active_jobs"
+    collection_name = LISTING_COLLECTION
     model = JobDocument
 
     async def get_many(self, ids: list[str]) -> dict[str, JobDocument]:
