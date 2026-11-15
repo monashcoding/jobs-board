@@ -14,11 +14,13 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./apps/discord-bot
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/ruff-action@v3
-        with:
-          src: apps/discord-bot
+      - name: Ruff
+        run: pipx run ruff check .
 
   test:
     runs-on: ubuntu-latest
