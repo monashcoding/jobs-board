@@ -61,9 +61,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # No build-args: mploy has no NEXT_PUBLIC_* build-time vars, and
-          # `next build` doesn't touch the DB. All secrets are runtime env in
-          # Dokploy.
+          # The PostHog project token is public (it ships in the browser
+          # bundle), so it is a repo Variable, not a Secret. PostHog stays off
+          # while it is unset. `next build` doesn't touch the DB; all secrets
+          # are runtime env in Dokploy.
+          build-args: |
+            NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
 
       # Tell Dokploy to pull the new image and redeploy. Create the app in
       # Dokploy with provider "Docker" pointing at ghcr.io/monashcoding/mploy:latest,

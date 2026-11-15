@@ -7,11 +7,12 @@
 # self-contained npm app — NOT a pnpm workspace — so npm ci resolves
 # everything from apps/website/package-lock.json.
 #
-# There are NO build-time vars: the app has no NEXT_PUBLIC_* values (the GA id
-# is hardcoded), and `next build` does NOT touch MongoDB (every DB route is
-# force-dynamic or reads searchParams — nothing is prerendered against the DB).
-# So everything secret (MONGODB_URI, NEXTAUTH_SECRET, OAuth creds, Notion keys)
-# is a *runtime* env var, set in Dokploy — never baked into the image.
+# One build-time var: NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN, inlined into the
+# browser bundle (PostHog stays off when it is empty). The GA id is hardcoded,
+# and `next build` does NOT touch MongoDB (every DB route is force-dynamic or
+# reads searchParams — nothing is prerendered against the DB). Everything
+# secret (MONGODB_URI, Notion keys) is a *runtime* env var, set in Dokploy —
+# never baked into the image.
 # ---------------------------------------------------------------------------
 
 FROM node:22-slim AS base
@@ -27,6 +28,8 @@ RUN npm ci
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ARG NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=""
+ENV NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN=$NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN
 RUN npm run build
 
 # ---- runtime ------------------------------------------------------------

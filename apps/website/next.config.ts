@@ -13,7 +13,10 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
 
-  serverExternalPackages: ["mongodb", "pino", "pino-pretty"],
+  // PostHog calls /ingest/e/ with a trailing slash
+  skipTrailingSlashRedirect: true,
+
+  serverExternalPackages: ["mongodb"],
 };
 
 export default nextConfig;
