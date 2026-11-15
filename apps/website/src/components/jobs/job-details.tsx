@@ -80,7 +80,7 @@ export default function JobDetails() {
   };
 
   const handleApplyClick = () => {
-    window.open(selectedJob.application_url, "_blank");
+    window.open(selectedJob.application_url ?? undefined, "_blank");
 
     trackApplyClick({
       jobId: selectedJob.id,
