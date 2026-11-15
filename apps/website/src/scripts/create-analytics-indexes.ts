@@ -29,9 +29,7 @@ async function main() {
   console.log("Created TTL index on job_apply_clicks.clickedAt");
 
   // Compound indexes for efficient per-job aggregation
-  await db
-    .collection("job_views")
-    .createIndex({ jobId: 1, viewedAt: -1 });
+  await db.collection("job_views").createIndex({ jobId: 1, viewedAt: -1 });
   console.log("Created compound index on job_views (jobId, viewedAt)");
 
   await db

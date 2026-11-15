@@ -12,9 +12,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
-  
+
   serverExternalPackages: ["mongodb", "pino", "pino-pretty"],
-  
 };
 
 export default nextConfig;
