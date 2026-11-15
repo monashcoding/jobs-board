@@ -1,4 +1,4 @@
-import { StageColorRole } from "@/types/application";
+import type { StageColorRole } from "@/types/application";
 
 export type RolePalette = {
   solid: string;

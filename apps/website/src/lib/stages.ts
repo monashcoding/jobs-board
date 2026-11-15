@@ -1,4 +1,4 @@
-import { UserStage } from "@/types/application";
+import type { UserStage } from "@/types/application";
 
 export const STAGES: UserStage[] = [
   {

@@ -1,10 +1,11 @@
-import { LocalApplication } from "@/types/application";
-import { Job } from "@/types/job";
+import type { LocalApplication } from "@/types/application";
+import type { Job } from "@/types/job";
 
 const STORAGE_KEY = "mploy_applications_v1";
 
 function safeParse(json: string | null): unknown {
   if (!json) return null;
+
   try {
     return JSON.parse(json);
   } catch {
@@ -16,7 +17,9 @@ export function getLocalApplications(): LocalApplication[] {
   if (typeof window === "undefined") return [];
   const raw = window.localStorage.getItem(STORAGE_KEY);
   const parsed = safeParse(raw);
+
   if (!Array.isArray(parsed)) return [];
+
   return parsed as LocalApplication[];
 }
 
@@ -46,6 +49,7 @@ export function upsertLocalStartedApplication(job: Job): LocalApplication {
 
   const merged = [next, ...apps.filter((a) => a.jobId !== job.id)];
   setLocalApplications(merged);
+
   return next;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  CSSProperties,
+  type CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -11,11 +11,11 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
-  CollisionDetection,
+  type CollisionDetection,
   DndContext,
-  DragEndEvent,
+  type DragEndEvent,
   DragOverlay,
-  DragStartEvent,
+  type DragStartEvent,
   PointerSensor,
   pointerWithin,
   rectIntersection,
@@ -53,7 +53,7 @@ import ApplicationDatePicker, {
 import CompanyLogo from "@/components/jobs/company-logo";
 import { rolePalette } from "@/lib/role-palette";
 import { relativeDate } from "@/lib/utils";
-import {
+import type {
   ApplicationStatus,
   DbApplication,
   UserStage,
@@ -61,10 +61,12 @@ import {
 import macSquareLogo from "@/assets/mac-square.png";
 
 export type KanbanSort = "newest" | "oldest";
+
 export type KanbanDensity = "compact" | "detailed";
 
 const VISIBLE_CARDS_PER_COLUMN = 4;
 const COMPACT_VISIBLE_CARDS_PER_COLUMN = 8;
+
 const ACCEPTED_COLUMN_CONFETTI = Array.from(
   { length: 14 },
   (_, index) => index,
@@ -80,7 +82,9 @@ function applicationLogo(app: DbApplication) {
 
 const cursorCollisionDetection: CollisionDetection = (args) => {
   const pointer = pointerWithin(args);
+
   if (pointer.length > 0) return pointer;
+
   return rectIntersection(args);
 };
 
@@ -136,24 +140,32 @@ export default function ApplicationsKanban({
 
   const grouped = useMemo(() => {
     const map = new Map<string, DbApplication[]>();
+
     for (const s of stages) map.set(s.name, []);
+
     for (const a of apps) {
       const arr = map.get(a.status);
+
       if (arr) arr.push(a);
       else {
         const first = stages[0]?.name;
+
         if (first) map.get(first)?.push(a);
       }
     }
+
     for (const arr of map.values()) {
       arr.sort((a, b) => {
         const aS = a.starred ? 1 : 0;
         const bS = b.starred ? 1 : 0;
+
         if (aS !== bS) return bS - aS;
         const cmp = b.updatedAt.localeCompare(a.updatedAt);
+
         return sort === "newest" ? cmp : -cmp;
       });
     }
+
     return map;
   }, [apps, stages, sort]);
 
@@ -179,6 +191,7 @@ export default function ApplicationsKanban({
   async function handleDragEnd(e: DragEndEvent) {
     setActiveId(null);
     const { active, over } = e;
+
     if (!over) return;
     const activeIdStr = String(active.id);
     const overId = String(over.id);
@@ -186,6 +199,7 @@ export default function ApplicationsKanban({
 
     if (activeType === "stage") {
       const sourceStage = active.data.current?.stageName;
+
       const targetStage = overId.startsWith("col:")
         ? overId.slice("col:".length)
         : null;
@@ -197,10 +211,12 @@ export default function ApplicationsKanban({
       ) {
         onStageReorder(sourceStage, targetStage);
       }
+
       return;
     }
 
     const sourceApp = apps.find((a) => a._id === activeIdStr);
+
     if (!sourceApp) return;
     const sourceStage = sourceApp.status;
 
@@ -210,10 +226,13 @@ export default function ApplicationsKanban({
       targetStage = overId.slice("col:".length);
     } else {
       const targetApp = apps.find((a) => a._id === overId);
+
       if (!targetApp) return;
       targetStage = targetApp.status;
     }
+
     if (!targetStage) return;
+
     if (sourceStage === targetStage) return;
 
     try {
@@ -235,7 +254,9 @@ export default function ApplicationsKanban({
   const desktopVisibleStages = stages.filter((s) =>
     visibleStageNames.includes(s.name),
   );
+
   const renderedStages = isMobileKanban ? stages : desktopVisibleStages;
+
   const stageCounts = useMemo(
     () =>
       new Map(
@@ -258,9 +279,11 @@ export default function ApplicationsKanban({
 
   const showMoveNotice = useCallback((message: string) => {
     setMoveNotice(message);
+
     if (moveNoticeTimerRef.current) {
       clearTimeout(moveNoticeTimerRef.current);
     }
+
     moveNoticeTimerRef.current = setTimeout(() => {
       setMoveNotice(null);
       moveNoticeTimerRef.current = null;
@@ -283,6 +306,7 @@ export default function ApplicationsKanban({
       <div className="apps-kanban-board">
         {renderedStages.map((stage) => {
           const stageApps = grouped.get(stage.name) ?? [];
+
           return (
             <KanbanColumn
               key={stage.id}
@@ -327,13 +351,17 @@ export function ApplicationsStatStrip({
   const wins = apps.filter(
     (a) => stages.find((s) => s.name === a.status)?.colorRole === "win",
   ).length;
+
   const losses = apps.filter(
     (a) => stages.find((s) => s.name === a.status)?.colorRole === "loss",
   ).length;
+
   const active = apps.filter((a) => {
     const s = stages.find((st) => st.name === a.status);
+
     return s?.colorRole === "active";
   }).length;
+
   const started = apps.filter((a) => a.status === "STARTED").length;
   const totalCount = apps.length;
   const winRate = totalCount > 0 ? Math.round((wins / totalCount) * 100) : 0;
@@ -362,10 +390,13 @@ export function ApplicationsStatStrip({
   ];
 
   const countsByStage: Record<string, number> = {};
+
   for (const s of stages) {
     countsByStage[s.name] = apps.filter((a) => a.status === s.name).length;
   }
+
   const max = Math.max(1, ...stages.map((s) => countsByStage[s.name] ?? 0));
+
   const mobileRailSegments = (["neutral", "active", "win", "loss"] as const)
     .map((role) => ({
       role,
@@ -375,6 +406,7 @@ export function ApplicationsStatStrip({
       palette: rolePalette(role),
     }))
     .filter(({ count }) => count > 0);
+
   const mobileCells = [
     { label: "Total", value: totalCount, role: "neutral" as const },
     { label: "Active", value: active, role: "active" as const },
@@ -388,6 +420,7 @@ export function ApplicationsStatStrip({
         <div className="apps-stat-mobile-top">
           {mobileCells.map((cell) => {
             const palette = rolePalette(cell.role);
+
             return (
               <div key={cell.label}>
                 <span
@@ -425,6 +458,7 @@ export function ApplicationsStatStrip({
       <div className="apps-stat-strip">
         {cells.map((c) => {
           const palette = rolePalette(c.role);
+
           return (
             <div key={c.label} className="apps-stat-cell">
               <div className="apps-stat-label">
@@ -448,6 +482,7 @@ export function ApplicationsStatStrip({
               const count = countsByStage[s.name] ?? 0;
               const palette = rolePalette(s.colorRole);
               const h = 4 + (count / max) * 28;
+
               return (
                 <div
                   key={s.id}
@@ -508,15 +543,19 @@ function KanbanColumn({
   acceptedCelebration?: Props["acceptedCelebration"];
 }) {
   const palette = rolePalette(stage.colorRole);
+
   const acceptedCelebrationKey =
     acceptedCelebration?.stageName === stage.name
       ? acceptedCelebration.id
       : null;
+
   const isAcceptedCelebrating = acceptedCelebrationKey !== null;
+
   const { setNodeRef: setDropNodeRef, isOver } = useDroppable({
     id: `col:${stage.name}`,
     data: { stageName: stage.name },
   });
+
   const {
     attributes: columnAttributes,
     listeners: columnListeners,
@@ -527,6 +566,7 @@ function KanbanColumn({
     id: `stage:${stage.name}`,
     data: { type: "stage", stageName: stage.name },
   });
+
   const columnDragProps = mobileDragDisabled
     ? {}
     : { ...columnAttributes, ...columnListeners };
@@ -562,12 +602,14 @@ function KanbanColumn({
     density === "compact"
       ? COMPACT_VISIBLE_CARDS_PER_COLUMN
       : VISIBLE_CARDS_PER_COLUMN;
+
   const hasHiddenApps = apps.length > visibleCardLimit;
   const visibleApps = expanded ? apps : apps.slice(0, visibleCardLimit);
   const hiddenCount = apps.length - visibleApps.length;
 
   async function confirmClear() {
     setClearing(true);
+
     try {
       await onClearStage(stage.name);
       setClearOpen(false);
@@ -585,6 +627,7 @@ function KanbanColumn({
   async function submit() {
     if (!title.trim() || !company.trim()) return;
     setCreating(true);
+
     try {
       await onCreateInStage(title.trim(), company.trim(), stage.name, date);
       reset();
@@ -663,9 +706,12 @@ function KanbanColumn({
               <div className="apps-mobile-stage-menu-list">
                 {mobileStages.map((mobileStage) => {
                   const mobilePalette = rolePalette(mobileStage.colorRole);
+
                   const mobileCount =
                     mobileStageCounts.get(mobileStage.name) ?? 0;
+
                   const selected = mobileStage.name === stage.name;
+
                   return (
                     <button
                       key={mobileStage.id}
@@ -949,6 +995,7 @@ function KanbanCard({
     !mobileDragDisabled && transform
       ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
       : {};
+
   const cardDragProps = mobileDragDisabled
     ? {}
     : { ...attributes, ...listeners };
@@ -958,17 +1005,21 @@ function KanbanCard({
   const [notesOpen, setNotesOpen] = useState(false);
   const [draft, setDraft] = useState(app.notes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
+
   const [notesPosition, setNotesPosition] = useState<CSSProperties | null>(
     null,
   );
+
   const cardRef = useRef<HTMLElement | null>(null);
   const notesEditorRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef(draft);
   const lastSavedNotesRef = useRef(app.notes ?? "");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const moveFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+
   const [movingTo, setMovingTo] = useState<string | null>(null);
   const [moveFeedback, setMoveFeedback] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -1006,9 +1057,11 @@ function KanbanCard({
 
   function showCardMoveFeedback(message: string) {
     setMoveFeedback(message);
+
     if (moveFeedbackTimerRef.current) {
       clearTimeout(moveFeedbackTimerRef.current);
     }
+
     moveFeedbackTimerRef.current = setTimeout(() => {
       setMoveFeedback(null);
       moveFeedbackTimerRef.current = null;
@@ -1019,6 +1072,7 @@ function KanbanCard({
     if (stage.name === app.status) return;
 
     setMovingTo(stage.name);
+
     try {
       await onStatusChange(app._id, app.jobId, app.status, stage.name);
       const message = `Moved to ${stage.displayName}`;
@@ -1036,12 +1090,14 @@ function KanbanCard({
   useEffect(() => {
     const nextNotes = app.notes ?? "";
     lastSavedNotesRef.current = nextNotes;
+
     if (!notesOpen) setDraft(nextNotes);
   }, [app.notes, notesOpen]);
 
   const saveNotesNow = useCallback(
     async (nextNotes: string) => {
       const persistedNotes = nextNotes.trim().length > 0 ? nextNotes : "";
+
       if (persistedNotes === lastSavedNotesRef.current) return;
 
       if (saveTimerRef.current) {
@@ -1051,6 +1107,7 @@ function KanbanCard({
 
       lastSavedNotesRef.current = persistedNotes;
       setSavingNotes(true);
+
       try {
         await onSaveNotes(app.jobId, persistedNotes);
       } catch {
@@ -1065,6 +1122,7 @@ function KanbanCard({
   const updateNotesPosition = useCallback(() => {
     const card = cardRef.current;
     const editor = notesEditorRef.current;
+
     if (!card || !editor) return;
 
     const gap = 10;
@@ -1073,18 +1131,23 @@ function KanbanCard({
     const viewportHeight = window.innerHeight;
     const cardRect = card.getBoundingClientRect();
     const editorRect = editor.getBoundingClientRect();
+
     const editorWidth =
       editorRect.width || Math.min(360, viewportWidth - margin * 2);
+
     const editorHeight = editorRect.height || 240;
     const maxLeft = Math.max(margin, viewportWidth - editorWidth - margin);
     const maxTop = Math.max(margin, viewportHeight - editorHeight - margin);
+
     const clamp = (value: number, min: number, max: number) =>
       Math.min(Math.max(value, min), max);
 
     let top = clamp(cardRect.top, margin, maxTop);
     let left = cardRect.right + gap;
+
     const canFitRight =
       cardRect.right + gap + editorWidth <= viewportWidth - margin;
+
     const canFitLeft = cardRect.left - gap - editorWidth >= margin;
 
     if (!canFitRight && canFitLeft) {
@@ -1096,9 +1159,11 @@ function KanbanCard({
         maxLeft,
       );
       top = cardRect.bottom + gap;
+
       if (top + editorHeight > viewportHeight - margin) {
         top = cardRect.top - editorHeight - gap;
       }
+
       top = clamp(top, margin, maxTop);
     }
 
@@ -1108,6 +1173,7 @@ function KanbanCard({
   useLayoutEffect(() => {
     if (!notesOpen) {
       setNotesPosition(null);
+
       return;
     }
 
@@ -1124,6 +1190,7 @@ function KanbanCard({
   useEffect(() => {
     if (!notesOpen) return;
     const persistedDraft = draft.trim().length > 0 ? draft : "";
+
     if (persistedDraft === lastSavedNotesRef.current) return;
 
     const timer = setTimeout(() => {
@@ -1134,6 +1201,7 @@ function KanbanCard({
 
     return () => {
       clearTimeout(timer);
+
       if (saveTimerRef.current === timer) saveTimerRef.current = null;
     };
   }, [draft, notesOpen, saveNotesNow]);
@@ -1153,15 +1221,18 @@ function KanbanCard({
 
     const closeOnOutsideInteraction = (event: Event) => {
       const target = event.target;
+
       if (target instanceof Node && notesEditorRef.current?.contains(target)) {
         return;
       }
 
       event.preventDefault();
       event.stopPropagation();
+
       const nativeEvent = event as Event & {
         stopImmediatePropagation?: () => void;
       };
+
       nativeEvent.stopImmediatePropagation?.();
       closeNotes();
     };
@@ -1317,6 +1388,7 @@ function KanbanCard({
             disabled={isDeleting}
             onClick={(e) => {
               e.stopPropagation();
+
               if (isDeleting) return;
               setNotesOpen(false);
               setIsDeleting(true);

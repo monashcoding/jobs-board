@@ -1,5 +1,5 @@
 // frontend/src/types/filters.ts
-import { JobType, LocationType, WorkingRight, IndustryField } from "./job";
+import type { JobType, LocationType, WorkingRight, IndustryField } from "./job";
 
 /**
  * JobFilters is a type that represents the filters that can be applied to the job search

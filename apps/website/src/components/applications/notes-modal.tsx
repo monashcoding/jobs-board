@@ -29,6 +29,7 @@ export default function NotesModal({
 
   async function handleSave() {
     setSaving(true);
+
     try {
       await onSave(value);
       onClose();

@@ -22,7 +22,7 @@ import {
 import { IconSearch } from "@tabler/icons-react";
 import { useFilterContext } from "@/context/filter/filter-context";
 import { getCompanyFacets } from "@/actions/company-facets";
-import { CompanyFacet } from "@/types/filters";
+import type { CompanyFacet } from "@/types/filters";
 
 // How many "hidden" chips to show before collapsing the rest into "+N more".
 const MAX_VISIBLE_HIDDEN = 6;
@@ -102,6 +102,7 @@ export function CompanyFilterSection() {
 
   useLayoutEffect(() => {
     const el = hiddenContentRef.current;
+
     if (!el) return;
     const measure = () => setHiddenHeight(el.scrollHeight);
     measure();
@@ -109,6 +110,7 @@ export function CompanyFilterSection() {
     observer.observe(el);
     // Enable the transition only after the first measure to avoid a mount jump.
     const raf = requestAnimationFrame(() => setAnimateHidden(true));
+
     return () => {
       observer.disconnect();
       cancelAnimationFrame(raf);
@@ -122,6 +124,7 @@ export function CompanyFilterSection() {
 
   const updateScrollFades = useCallback(() => {
     const el = viewportRef.current;
+
     if (!el) return;
     setShowTopFade(el.scrollTop > 1);
     setShowBottomFade(el.scrollTop + el.clientHeight < el.scrollHeight - 1);
@@ -158,6 +161,7 @@ export function CompanyFilterSection() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
@@ -167,7 +171,9 @@ export function CompanyFilterSection() {
 
   const visibleFacets = useMemo(() => {
     const q = search.trim().toLowerCase();
+
     if (!q) return facets;
+
     return facets.filter((f) => f.company.toLowerCase().includes(q));
   }, [facets, search]);
 
@@ -186,9 +192,11 @@ export function CompanyFilterSection() {
 
   const setExcluded = useCallback((next: string[]) => {
     const { filters, updateFilters } = latest.current;
+
     // Drive the chips row: show `next` while non-empty; when clearing, keep the
     // current chips mounted until the collapse animation finishes.
     if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+
     if (next.length > 0) {
       setDisplayedHidden(next);
     } else {
@@ -197,6 +205,7 @@ export function CompanyFilterSection() {
         HIDDEN_ANIM_MS + 40,
       );
     }
+
     updateFilters({
       filters: {
         ...filters.filters,

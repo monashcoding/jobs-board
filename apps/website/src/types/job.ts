@@ -5,6 +5,7 @@ export const JOB_TYPES = [
   "GRADUATE",
   "OTHER",
 ] as const;
+
 export type JobType = (typeof JOB_TYPES)[number];
 
 export const LOCATIONS = [
@@ -19,6 +20,7 @@ export const LOCATIONS = [
   "AUSTRALIA",
   "OTHERS",
 ] as const;
+
 export type LocationType = (typeof LOCATIONS)[number];
 
 export const WORKING_RIGHTS = [
@@ -27,6 +29,7 @@ export const WORKING_RIGHTS = [
   "INTERNATIONAL",
   "OTHER_RIGHTS",
 ] as const;
+
 export type WorkingRight = (typeof WORKING_RIGHTS)[number];
 
 export const INDUSTRY_FIELDS = [
@@ -43,6 +46,7 @@ export const INDUSTRY_FIELDS = [
   "TRANSPORTATION",
   "OTHER_INDUSTRY",
 ] as const;
+
 export type IndustryField = (typeof INDUSTRY_FIELDS)[number];
 
 export interface Company {

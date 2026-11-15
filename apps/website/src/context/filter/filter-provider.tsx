@@ -1,20 +1,20 @@
 // frontend/src/context/jobs/jobs-provider.tsx
 "use client";
 
-import { ReactNode, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FilterContext } from "./filter-context";
 import { CreateQueryString } from "@/lib/utils";
-import { FilterState } from "@/types/filters";
+import type { FilterState } from "@/types/filters";
 import {
-  Job,
-  IndustryField,
+  type Job,
+  type IndustryField,
   INDUSTRY_FIELDS,
-  JobType,
+  type JobType,
   JOB_TYPES,
-  LocationType,
+  type LocationType,
   LOCATIONS,
-  WorkingRight,
+  type WorkingRight,
   WORKING_RIGHTS,
 } from "@/types/job";
 
@@ -88,6 +88,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     if (job?.working_rights && job.working_rights.length > 0) {
       job.working_rights = [...new Set(job.working_rights)];
     }
+
     setSelectedJobInternal(job);
   };
 

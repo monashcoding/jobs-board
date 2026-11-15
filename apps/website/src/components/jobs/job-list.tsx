@@ -3,7 +3,7 @@
 
 import JobCard from "@/components/jobs/job-card";
 import { useFilterContext } from "@/context/filter/filter-context";
-import { Job } from "@/types/job";
+import type { Job } from "@/types/job";
 import { useEffect, useState } from "react";
 import { Modal, ScrollArea } from "@mantine/core";
 import JobDetails from "@/components/jobs/job-details";
@@ -27,7 +27,7 @@ export default function JobList({ jobs }: JobListProps) {
 
   useEffect(() => {
     if (!selectedJob) {
-      setSelectedJob(jobs[0]);
+      setSelectedJob(jobs[0] ?? null);
     }
   }, [jobs, selectedJob, setSelectedJob]);
 
@@ -56,6 +56,7 @@ export default function JobList({ jobs }: JobListProps) {
               onClick={() => {
                 setSelectedJob(job);
                 trackJobView({ jobId: job.id, ref });
+
                 // Only open modal on mobile
                 if (window.innerWidth < 1024) {
                   setIsModalOpen(true);

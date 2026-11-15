@@ -23,6 +23,7 @@ export default function CompanyLogo({
   const extractBaseDomain = (url: string): string => {
     try {
       const urlObj = new URL(url);
+
       return urlObj.hostname;
     } catch {
       return "";
@@ -46,6 +47,7 @@ export default function CompanyLogo({
 
     try {
       const domain = new URL(url).hostname;
+
       return skipDomains.some((skipDomain) => domain.includes(skipDomain));
     } catch {
       return true;
@@ -78,6 +80,7 @@ export default function CompanyLogo({
   // Case 2: Try Clearbit logo from application URL
   if (applicationUrl && !shouldSkipUrl(applicationUrl) && !clearbitFailed) {
     const domain = extractBaseDomain(applicationUrl);
+
     if (domain) {
       return (
         <Image

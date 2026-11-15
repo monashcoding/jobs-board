@@ -6,6 +6,7 @@ export default function MainContentLoading() {
   {
     /* Main content area */
   }
+
   return (
     <div className="mt-4 flex flex-col lg:flex-row">
       <div className="lg:pr-1 w-full lg:w-[35%]">

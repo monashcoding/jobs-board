@@ -75,6 +75,7 @@ export default function DotBackground() {
         const distance = Math.sqrt(dx * dx + dy * dy);
 
         let opacity = 0.08; // Lower base opacity
+
         if (distance < CURSOR_RADIUS) {
           opacity = 0.08 + (1 - distance / CURSOR_RADIUS) * 0.3;
         }

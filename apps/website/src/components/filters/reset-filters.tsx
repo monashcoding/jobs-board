@@ -24,6 +24,7 @@ export default function ResetFilters({
       workingRights,
       excludedCompanies,
     } = filters.filters;
+
     return (
       search !== "" ||
       industryFields.length > 0 ||

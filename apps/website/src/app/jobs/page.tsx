@@ -2,7 +2,7 @@
 import FilterSection from "@/components/filters/filter-section";
 import JobList from "@/components/jobs/job-list";
 import JobDetails from "@/components/jobs/job-details";
-import { JobFilters } from "@/types/filters";
+import type { JobFilters } from "@/types/filters";
 import { getJobs } from "@/actions/jobs.fetch";
 import NoResults from "@/components/ui/no-results";
 import { Suspense } from "react";

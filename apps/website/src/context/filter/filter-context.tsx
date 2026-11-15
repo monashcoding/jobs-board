@@ -2,8 +2,8 @@
 
 // frontend/src/context/jobs/filter-context.tsx
 import { createContext, useContext } from "react";
-import { FilterState } from "@/types/filters";
-import { Job } from "@/types/job";
+import type { FilterState } from "@/types/filters";
+import type { Job } from "@/types/job";
 
 interface FilterContextType {
   filters: FilterState;
@@ -22,8 +22,10 @@ export const FilterContext = createContext<FilterContextType | undefined>(
 
 export function useFilterContext() {
   const context = useContext(FilterContext);
+
   if (!context) {
     throw new Error("useJobsContext must be used within JobsProvider");
   }
+
   return context;
 }

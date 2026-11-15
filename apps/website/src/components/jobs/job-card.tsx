@@ -1,7 +1,8 @@
 // frontend/src/components/jobs/details/job-card.tsx
 "use client";
+
 import { Box } from "@mantine/core";
-import { Job } from "@/types/job";
+import type { Job } from "@/types/job";
 import { formatCapString, getTimeAgo } from "@/lib/utils";
 import Badge from "@/components/ui/badge";
 import DOMPurify from "dompurify";
@@ -12,12 +13,14 @@ interface JobCardProps {
   isSelected?: boolean;
   isSponsor?: boolean;
 }
+
 const removeImageTags = (content: string): string => {
   return content.replace(/<img[^>]*>/g, "");
 };
 
 export default function JobCard({ job, isSelected, isSponsor }: JobCardProps) {
   const washedDescription = job.one_liner ? removeImageTags(job.one_liner) : "";
+
   return (
     <Box
       bg={isSelected ? "selected" : "secondary"}
