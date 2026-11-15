@@ -1,0 +1,101 @@
+name: MPLOY Backend Scraper
+
+on:
+#  schedule:
+#    # Run at 8am and 8pm Sydney time (AEST/AEDT)
+#    - cron: '0 21 * * *'  # 8am Sydney time (AEDT is UTC+11, AEST is UTC+10)
+#    - cron: '0 6 * * *'   # 5pm Sydney time (AEDT is UTC+11, AEST is UTC+10)
+  workflow_dispatch:
+    # Allow manual triggering
+
+env:
+  MONGODB_URI: ${{ secrets.MONGODB_URI }}
+  MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
+  MONGODB_COLLECTION: ${{ secrets.MONGODB_COLLECTION }}
+  BRIGHTDATA_CUSTOMER_ID: ${{ secrets.BRIGHTDATA_CUSTOMER_ID }}
+  BRIGHTDATA_ZONE_NAME: ${{ secrets.BRIGHTDATA_ZONE_NAME }}
+  BRIGHTDATA_PASSWORD: ${{ secrets.BRIGHTDATA_PASSWORD }}
+  AZ_OPENAI_ENDPOINT: ${{ secrets.AZ_OPENAI_ENDPOINT }}
+  AZ_API_KEY: ${{ secrets.AZ_API_KEY }}
+  DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+  BRIGHTDATA_API_TOKEN: ${{ secrets.BRIGHTDATA_API_TOKEN }}
+  VERSION: ${{ secrets.VERSION }}
+  # Optional configs - uncomment and customize as needed
+  # RUN_SCRAPERS: "GradConnections,LinkedIn,Prosple,JaneStreet,Atlassian"
+  # RUN_PIPELINE_STEPS: "Normalisation,Deduplication,Synchronisation,MVPUpload"
+#  SCRAPER_JOB_LIMITS: "GradConnections:50,LinkedIn:50,Prosple:50"
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Send Discord notification (Started)
+        if: success()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: MAC GitHub Actions
+          title: "🚀 Scraper Started"
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Create .env file
+        run: |
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" > .env
+          echo "MONGODB_DATABASE=${{ secrets.MONGODB_DATABASE }}" >> .env
+          echo "MONGODB_COLLECTION=${{ secrets.MONGODB_COLLECTION }}" >> .env
+          echo "BRIGHTDATA_CUSTOMER_ID=${{ secrets.BRIGHTDATA_CUSTOMER_ID }}" >> .env
+          echo "BRIGHTDATA_ZONE_NAME=${{ secrets.BRIGHTDATA_ZONE_NAME }}" >> .env
+          echo "BRIGHTDATA_PASSWORD=${{ secrets.BRIGHTDATA_PASSWORD }}" >> .env
+          echo "AZ_OPENAI_ENDPOINT=${{ secrets.AZ_OPENAI_ENDPOINT }}" >> .env
+          echo "AZ_API_KEY=${{ secrets.AZ_API_KEY }}" >> .env
+          echo "DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}" >> .env
+          echo "VERSION=${{ secrets.VERSION }}" >> .env
+
+      - name: Create debug directory
+        run: mkdir -p debug/{write-json,linkedin}
+
+      - name: Run scraper
+        run: go run cmd/scraper/main.go
+
+      - name: Upload job listings for debugging
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-listings
+          path: debug/write-json/
+          retention-days: 7
+
+      - name: Send Discord notification (Completed)
+        if: always()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ job.status }}
+          username: MAC GitHub Actions
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          fields: |
+            [
+              {
+                "name": "GitHub Action",
+                "value": "[View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",
+                "inline": true
+              },
+              {
+                "name": "Artifacts",
+                "value": "[View Debug Files](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})",
+                "inline": true
+              }
+            ]

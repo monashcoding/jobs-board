@@ -1,0 +1,413 @@
+package steps
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/monashcoding/mploy-golang-core/internal/models"
+	"github.com/monashcoding/mploy-golang-core/internal/utils"
+)
+
+var studyFieldMapping = map[string]string{
+	"Business & Management":                 "Business & Management",
+	"Creative Arts":                         "Creative Arts",
+	"Engineering & Mathematics":             "Engineering & Mathematics",
+	"Food, Hospitality & Personal Services": "Food, Hospitality & Personal Services",
+	"Humanities, Arts & Social Sciences":    "Humanities, Arts & Social Sciences",
+	"IT & Computer Science":                 "IT & Computer Science",
+	"Law, Legal Studies & Justice":          "Law, Legal Studies & Justice",
+	"Medical & Health Sciences":             "Medical & Health Sciences",
+	"Property & Built Environment":          "Property & Built Environment",
+	"Sciences":                              "Sciences",
+	"Teaching & Education":                  "Teaching & Education",
+	"Trades & Services":                     "Trades & Services",
+
+	"Accounting":                           "Business & Management",
+	"Actuarial Studies":                    "Sciences",
+	"Administration":                       "Business & Management",
+	"Agriculture":                          "Sciences",
+	"Architecture":                         "Property & Built Environment",
+	"Arts and Humanities":                  "Humanities, Arts & Social Sciences",
+	"Aviation":                             "Engineering & Mathematics",
+	"Banking and Finance":                  "Business & Management",
+	"Business and Commerce":                "Business & Management",
+	"Communications":                       "Humanities, Arts & Social Sciences",
+	"Compliance":                           "Law, Legal Studies & Justice",
+	"Computer Science":                     "IT & Computer Science",
+	"Construction":                         "Property & Built Environment",
+	"Consulting":                           "Business & Management",
+	"Customer Service":                     "Trades & Services",
+	"Cyber Security":                       "IT & Computer Science",
+	"Data Science and Analytics":           "IT & Computer Science",
+	"Defence":                              "Law, Legal Studies & Justice",
+	"Design and User Experience":           "Creative Arts",
+	"Economics":                            "Business & Management",
+	"Education":                            "Teaching & Education",
+	"Engineering":                          "Engineering & Mathematics",
+	"Engineering - Aerospace/Aeronautical": "Engineering & Mathematics",
+	"Engineering - Chemical/Processing":    "Engineering & Mathematics",
+	"Engineering - Civil/Structural":       "Engineering & Mathematics",
+	"Engineering - Electrical":             "Engineering & Mathematics",
+	"Engineering - Environmental":          "Engineering & Mathematics",
+	"Engineering - Geotechnical":           "Engineering & Mathematics",
+	"Engineering - Mechanical":             "Engineering & Mathematics",
+	"Engineering - Mechatronics":           "Engineering & Mathematics",
+	"Engineering - Mining":                 "Engineering & Mathematics",
+	"Engineering - Petroleum":              "Engineering & Mathematics",
+	"Engineering - Software":               "IT & Computer Science",
+	"Environment":                          "Sciences",
+	"Exercise Physiology":                  "Medical & Health Sciences",
+	"Fast Moving Consumer Goods":           "Business & Management",
+	"Food Technology":                      "Food, Hospitality & Personal Services",
+	"Funds Management":                     "Business & Management",
+	"Geology":                              "Sciences",
+	"Government":                           "Law, Legal Studies & Justice",
+	"Health":                               "Medical & Health Sciences",
+	"Health Policy, Promotion and Administration": "Medical & Health Sciences",
+	"Horticulture":                    "Sciences",
+	"Hospitality, Sports and Tourism": "Food, Hospitality & Personal Services",
+	"Human Resources":                 "Business & Management",
+	"Industrial Design":               "Creative Arts",
+	"Information Systems":             "IT & Computer Science",
+	"Information Technology":          "IT & Computer Science",
+	"Insurance":                       "Business & Management",
+	"Intelligence":                    "Law, Legal Studies & Justice",
+	"Investment Banking":              "Business & Management",
+	"Journalism":                      "Humanities, Arts & Social Sciences",
+	"Law":                             "Law, Legal Studies & Justice",
+	"Logistics and Supply Chain":      "Business & Management",
+	"Management":                      "Business & Management",
+	"Marine Biology":                  "Sciences",
+	"Marketing and Sales":             "Business & Management",
+	"Mathematics":                     "Sciences",
+	"Media and Advertising":           "Humanities, Arts & Social Sciences",
+	"Medical and Biomedical Science":  "Medical & Health Sciences",
+	"Medicine":                        "Medical & Health Sciences",
+	"Mining Oil and Gas":              "Engineering & Mathematics",
+	"Nursing and Midwifery":           "Medical & Health Sciences",
+	"Operations":                      "Business & Management",
+	"Pharmacy and Pharmacology":       "Medical & Health Sciences",
+	"Physics":                         "Sciences",
+	"Physiotherapy, Occupational Therapy and Rehabilitation": "Medical & Health Sciences",
+	"Planning and Surveying":                                 "Property & Built Environment",
+	"Procurement":                                            "Business & Management",
+	"Project Management":                                     "Business & Management",
+	"Property":                                               "Property & Built Environment",
+	"Psychology, Counselling and Social Work":                "Medical & Health Sciences",
+	"Radiography and Medical Imaging":                        "Medical & Health Sciences",
+	"Recruitment":                                            "Business & Management",
+	"Research and Development":                               "Sciences",
+	"Retail":                                                 "Trades & Services",
+	"Science":                                                "Sciences",
+	"Speech Pathology":                                       "Medical & Health Sciences",
+	"Statistics":                                             "Sciences",
+	"Telecommunications":                                     "IT & Computer Science",
+	"Transport":                                              "Engineering & Mathematics",
+	"Utilities":                                              "Engineering & Mathematics",
+}
+
+type NormalisationStep struct{}
+
+func NewNormalisationStep() *NormalisationStep {
+	return &NormalisationStep{}
+}
+
+func (s *NormalisationStep) Name() string {
+	return "Normalisation"
+}
+
+func (s *NormalisationStep) Process(ctx context.Context, listings []models.Listing) ([]models.Listing, error) {
+	normalised := []models.Listing{} // process and insert listings
+
+	for _, listing := range listings {
+		if ListingIsEOI(listing) {
+			continue
+		}
+
+		if ListingActiveDateIsInFuture(listing) {
+			continue
+		}
+
+		if EmptyApplicationUrl(listing) {
+			continue
+		}
+
+		listing, err := RemoveEmptyStrings(listing)
+		if err != nil {
+			utils.Warn("Failed to remove empty strings: %v", err)
+		}
+
+		listing, err = StandardiseStudyFields(listing)
+		if err != nil {
+			utils.Warn("Failed to Standardise Study Fields: %v", err)
+		}
+
+		listing, err = StandardiseCompanyName(listing)
+		if err != nil {
+			utils.Warn("Failed to Standardise Company Name: %v", err)
+		}
+
+		listing, err = AddSponsoredCompanies(listing)
+		if err != nil {
+			utils.Warn("Failed to add sponsored companies: %v", err)
+		}
+
+		listing, err = HardcodeIndustryField(listing)
+		if err != nil {
+			utils.Warn("Failed to hardcode industry field: %v", err)
+		}
+
+		listing = StripApplicationURLParams(listing)
+		listing = RecoverLocation(listing)
+
+		// Append the normalised listing to the result slice
+		normalised = append(normalised, listing)
+	}
+
+	utils.Success("Normalisation: %d -> %d listings", len(listings), len(normalised))
+
+	return normalised, nil
+}
+
+// RecoverLocation places a listing whose source told us nothing about where it
+// is. A listing reaches here as OTHERS either because the source gave no
+// location at all or because it gave one no table matched -- Prosple labels a
+// job "Sydney" or "Hobart TAS" where the map only knew state names, and 18
+// genuinely Australian listings were sitting off the board because of it.
+//
+// The title is the fallback, since that is where the city usually reappears
+// ("Junior Infrastructure Engineer, Sydney"). Overseas wins: a title naming a
+// place outside Australia is placed there rather than promoted, so this can
+// only recover listings nothing identifies as foreign.
+//
+// Only a listing that is *entirely* OTHERS is touched. One that already names a
+// state knows where it is.
+func RecoverLocation(listing models.Listing) models.Listing {
+	if len(listing.Locations) != 1 || listing.Locations[0] != models.OTHERS {
+		return listing
+	}
+
+	if _, overseas := utils.FindOverseasToken(listing.Title); overseas {
+		listing.Locations = []models.LocationType{utils.OverseasLocationFor(listing.Title)}
+		return listing
+	}
+
+	if australian := utils.AustralianLocationsIn(listing.Title); len(australian) > 0 {
+		utils.Log("Recovered %v for %q from its title; the source gave no usable location.",
+			australian, listing.Title)
+		listing.Locations = australian
+	}
+
+	return listing
+}
+
+func ListingIsEOI(listing models.Listing) bool {
+
+	eoiString := []string{
+		"eoi",
+		"eoy",
+		"expression of interest",
+		"expressions of interest",
+		"notify me",
+		"register interest",
+		"talent community",
+		"meet a",
+		"virtual internship",
+		"virtual experience",
+	}
+
+	for _, eoi := range eoiString {
+		if strings.Contains(strings.ToLower(listing.Title), eoi) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func ListingActiveDateIsInFuture(listing models.Listing) bool {
+	if listing.OpenDate == nil {
+		return false
+	}
+
+	return listing.OpenDate.After(time.Now())
+}
+
+func EmptyApplicationUrl(listing models.Listing) bool {
+	return listing.ApplicationURL == nil || strings.TrimSpace(*listing.ApplicationURL) == ""
+}
+
+func StandardiseStudyFields(listing models.Listing) (models.Listing, error) {
+	// Standardise the Study Field strings to a common format
+	// Related Ticket (https://www.notion.so/monashcoding/Pipeline-Normalisation-Standardise-Study-Field-Strings-1591e0829dd880a0abcbd9a8ce13c67c)
+	uniqueStudyFields := make(map[string]bool)
+
+	for _, field := range listing.StudyFields {
+		// Check if the study field exists in the mapping
+		conciseField, exists := studyFieldMapping[field]
+		if !exists {
+			return listing, fmt.Errorf("unknown study field: %s in listing: %+v", field, listing)
+		}
+		uniqueStudyFields[conciseField] = true
+	}
+
+	// Convert map keys back to a list
+	var standardizedFields []string
+	for field := range uniqueStudyFields {
+		standardizedFields = append(standardizedFields, field)
+	}
+
+	// Assign the unique, standardized fields back to the listing
+	listing.StudyFields = standardizedFields
+
+	return listing, nil
+}
+
+func RemoveEmptyStrings(listing models.Listing) (models.Listing, error) {
+	// Remove empty strings
+	// Related Ticket (https://www.notion.so/monashcoding/1171e0829dd88010a8acdab2a23428e7?v=11c1e0829dd88085a07e000c9515dfca&p=1591e0829dd880528ca3ed948c02f303&pm=s)
+	// Trim string fields
+	listing.Title = strings.TrimSpace(listing.Title)
+
+	if listing.Description != nil {
+		trimmedDescription := strings.TrimSpace(*listing.Description)
+		listing.Description = &trimmedDescription
+	}
+
+	if listing.ApplicationURL != nil {
+		trimmedApplicationURL := strings.TrimSpace(*listing.ApplicationURL)
+		listing.ApplicationURL = &trimmedApplicationURL
+	}
+
+	for j, sourceURL := range listing.SourceURLs {
+		listing.SourceURLs[j] = strings.TrimSpace(sourceURL)
+	}
+
+	// Filter out "..." from StudyFields
+	filteredStudyFields := []string{}
+	for _, studyField := range listing.StudyFields {
+		trimmedField := strings.TrimSpace(studyField)
+		if trimmedField != "..." {
+			filteredStudyFields = append(filteredStudyFields, trimmedField)
+		}
+	}
+	listing.StudyFields = filteredStudyFields
+
+	return listing, nil
+}
+
+func StandardiseCompanyName(listing models.Listing) (models.Listing, error) {
+	// Standardise the Study Field strings to a common format
+	// Related Ticket (https://www.notion.so/monashcoding/Pipeline-Normalisation-Standardise-Study-Field-Strings-1591e0829dd880a0abcbd9a8ce13c67c)
+
+	// 1. Trim the company name
+	standardisedName := strings.TrimSpace(listing.Company.Name)
+
+	// 2. Drop trailing country/legal suffixes so "Thales Australia" and "Thales"
+	// are the same employer. Company name feeds the fingerprint, so leaving them
+	// split mints a duplicate document (and a duplicate Discord thread).
+	standardisedName = utils.StripCompanySuffix(standardisedName)
+
+	// 3. Match with known ambiguous company names
+	for _, company := range utils.GetCompanyMap() {
+		for _, match := range company.Matches {
+			if strings.EqualFold(standardisedName, match) {
+				standardisedName = company.Name
+				break
+			}
+		}
+	}
+
+	listing.Company.Name = standardisedName
+
+	return listing, nil
+}
+
+func AddSponsoredCompanies(listing models.Listing) (models.Listing, error) {
+
+	// Convert sponsoredCompaniesStr to list of strings
+	var sponsoredCompanies = []string{
+		"Atlassian",
+		"IMC",
+		"Citadel Securities",
+		"Optiver",
+		"Jane Street",
+		"Susquehanna International Group",
+		"Canva",
+		"Lyra Technologies",
+		"Vivcourt",
+		"January Capital",
+		"Flow Traders",
+	}
+
+	// If the company name is in the list of sponsored companies, set the listing as sponsored
+	for _, company := range sponsoredCompanies {
+		if strings.EqualFold(listing.Company.Name, strings.TrimSpace(company)) {
+			listing.IsSponsored = true
+			break
+		}
+	}
+	return listing, nil
+}
+
+// trackingParams is an allowlist of query param names that are safe to strip because
+// they carry no job identity — they are search terms, locale hints, or tracking tokens.
+// See https://github.com/monashcoding/mploy-golang-core/pull/97
+//
+// NOTE: Do NOT strip params blindly. Several ATS platforms (Taleo, BrassRing,
+// SAP SuccessFactors, WA Jobs Portal, PwC) encode the job ID entirely in a query
+// param (e.g. vacancyid=, jobId=, Areq=, AdvertID=). Stripping those collapses
+// all jobs at a company to the same URL. Only params confirmed to be non-identifying
+// belong here.
+var trackingParams = map[string]bool{
+	"q":      true, // search query (e.g. Google Careers)
+	"hl":     true, // locale/language hint
+	"e":      true, // Google event tracking
+	"src":    true, // referral source
+	"mode":   true, // Atlassian ?mode=apply
+	"iis":    true, // LinkedIn impression tracking
+	"spread": true, // LinkedIn spread tracking
+	"source": true, // generic source tracking
+	"codes":  true, // referral tracking code (SIG/iCIMS redirect URLs)
+	"lang":   true, // locale/language hint
+}
+
+// stripTrackingParams removes known tracking/search query params from a URL,
+// leaving any params that may carry job identity untouched.
+func stripTrackingParams(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	q := parsed.Query()
+	for key := range q {
+		if trackingParams[key] || strings.HasPrefix(key, "utm_") {
+			q.Del(key)
+		}
+	}
+	parsed.RawQuery = q.Encode()
+	return parsed.String()
+}
+
+func StripApplicationURLParams(listing models.Listing) models.Listing {
+	if listing.ApplicationURL == nil {
+		return listing
+	}
+	stripped := stripTrackingParams(*listing.ApplicationURL)
+	listing.ApplicationURL = &stripped
+	return listing
+}
+
+func HardcodeIndustryField(listing models.Listing) (models.Listing, error) {
+	// Hardcode the industry field based on the company name
+	industryMap := utils.GetIndustryFieldMap()
+
+	if industry, ok := industryMap[listing.Company.Name]; ok {
+		listing.IndustryField = industry
+	}
+
+	return listing, nil
+}
