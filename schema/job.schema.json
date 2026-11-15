@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jobs.monashcoding.com/schema/job.schema.json",
+  "title": "Listing",
+  "description": "A job listing as stored in the `active_jobs` MongoDB collection. The scraper writes it, the website reads it and the Discord bot posts it.",
+  "type": "object",
+  "x-collection": "active_jobs",
+  "properties": {
+    "_id": {
+      "type": "string",
+      "x-format": "object-id",
+      "x-go": { "name": "ID", "omitempty": true, "json": "id" }
+    },
+    "title": { "type": "string" },
+    "description": { "type": ["string", "null"] },
+    "source_description_hash": {
+      "type": "string",
+      "description": "SourceDescriptionHash is the hash of the description exactly as scraped,\nbefore any formatting is applied. Description itself is stored in its\nformatted form, so it cannot be compared against a fresh scrape to tell\nwhether the source actually changed; this can.",
+      "x-go": { "omitempty": true, "json": "-" }
+    },
+    "one_liner": { "type": ["string", "null"], "x-go": { "name": "OneLinerDesc" } },
+    "company": { "$ref": "#/$defs/Company" },
+    "application_url": { "type": ["string", "null"], "x-go": { "name": "ApplicationURL" } },
+    "wfh_status": {
+      "anyOf": [{ "$ref": "#/$defs/WFHStatus" }, { "type": "null" }],
+      "x-go": { "name": "WFHStatus" }
+    },
+    "source_urls": {
+      "type": "array",
+      "items": { "type": "string" },
+      "x-go": { "name": "SourceURLs" }
+    },
+    "type": { "anyOf": [{ "$ref": "#/$defs/JobType" }, { "type": "null" }] },
+    "open_date": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-go": { "omitempty": true }
+    },
+    "close_date": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "x-go": { "omitempty": true }
+    },
+    "locations": { "type": "array", "items": { "$ref": "#/$defs/LocationType" } },
+    "source": { "$ref": "#/$defs/Source" },
+    "study_fields": { "type": "array", "items": { "type": "string" } },
+    "industry_field": { "$ref": "#/$defs/IndustryField" },
+    "discipline": { "$ref": "#/$defs/Discipline" },
+    "board_score": { "type": "integer" },
+    "board_eligible": { "type": "boolean" },
+    "company_tier": { "type": "string" },
+    "working_rights": { "type": "array", "items": { "$ref": "#/$defs/WorkingRight" } },
+    "is_sponsored": { "type": "boolean" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "days_lived": { "type": "integer", "x-go": { "name": "Days_lived" } },
+    "fingerprint": {
+      "type": "string",
+      "description": "Identifies the same listing across scrapes. Set by the upload step, not part of the Go Listing struct.",
+      "x-go": { "skip": true }
+    },
+    "version": {
+      "type": "string",
+      "description": "The scraper run that last wrote the document. Set by the upload step.",
+      "x-go": { "skip": true }
+    },
+    "outdated": {
+      "type": "boolean",
+      "description": "True once the listing has disappeared from its source. Set by the upload step.",
+      "x-go": { "skip": true }
+    }
+  },
+  "required": [
+    "_id",
+    "title",
+    "description",
+    "one_liner",
+    "company",
+    "application_url",
+    "wfh_status",
+    "source_urls",
+    "type",
+    "locations",
+    "source",
+    "study_fields",
+    "industry_field",
+    "discipline",
+    "board_score",
+    "board_eligible",
+    "company_tier",
+    "working_rights",
+    "is_sponsored",
+    "created_at",
+    "updated_at",
+    "days_lived"
+  ],
+  "$defs": {
+    "JobType": {
+      "type": "string",
+      "enum": ["EOI", "PRE_PENULTIMATE", "INTERN", "GRADUATE", "OTHER"]
+    },
+    "LocationType": {
+      "type": "string",
+      "enum": ["VIC", "NSW", "QLD", "WA", "NT", "SA", "ACT", "TAS", "AUSTRALIA", "APAC", "OTHERS"],
+      "x-enum-descriptions": {
+        "APAC": "APAC is a listing outside Australia but in the region: Hong Kong,\nSingapore, Tokyo and the rest. It is not an Australian location and does\nnot reach the Discord board; it exists so the website can say where an\noverseas listing actually is instead of filing it under OTHERS."
+      }
+    },
+    "WFHStatus": {
+      "type": "string",
+      "enum": ["HYBRID", "REMOTE", "OFFICE"]
+    },
+    "WorkingRight": {
+      "type": "string",
+      "enum": ["AUS_CITIZEN_PR", "NZ_CITIZEN_PR", "INTERNATIONAL", "OTHER_RIGHTS"]
+    },
+    "Company": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "website": { "type": ["string", "null"] },
+        "logo": { "type": ["string", "null"] }
+      },
+      "required": ["name", "website", "logo"]
+    },
+    "IndustryField": {
+      "type": "string",
+      "enum": [
+        "CONSULTING",
+        "BANKS",
+        "BIG_TECH",
+        "TECH",
+        "QUANT_TRADING",
+        "ENERGY",
+        "GOVERNMENT",
+        "MANUFACTURING",
+        "TELECOMMUNICATIONS",
+        "RETAIL",
+        "TRANSPORTATION",
+        "OTHER_INDUSTRY"
+      ]
+    },
+    "Discipline": {
+      "type": "string",
+      "description": "Discipline is the technical discipline of the role itself, as opposed to\nIndustryField (the employer's sector) or StudyFields (the degrees a listing\nis open to). Sources tag broad graduate programs with every discipline they\naccept, so StudyFields cannot tell a software role from a supply chain one.",
+      "enum": ["SOFTWARE", "DATA", "CYBER", "ENGINEERING", "OTHER_DISCIPLINE"]
+    },
+    "Source": {
+      "type": "string",
+      "enum": ["GRADCONNECTION", "PROSPLE", "LINKEDIN", "ATLASSIAN", "JANESTREET", "AIRWALLEX", "MULTIPLE"]
+    }
+  }
+}

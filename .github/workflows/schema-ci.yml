@@ -1,0 +1,38 @@
+name: Schema CI
+
+on:
+  push:
+    branches: [development]
+    paths:
+      - "schema/**"
+      - "apps/service/internal/models/listing.gen.go"
+      - "apps/website/src/types/job.gen.ts"
+      - "apps/discord-bot/src/backend/mongo/collections/job_schema.py"
+      - ".github/workflows/schema-ci.yml"
+  pull_request:
+    paths:
+      - "schema/**"
+      - "apps/service/internal/models/listing.gen.go"
+      - "apps/website/src/types/job.gen.ts"
+      - "apps/discord-bot/src/backend/mongo/collections/job_schema.py"
+      - ".github/workflows/schema-ci.yml"
+
+jobs:
+  generated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/service/go.mod
+          cache: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Check the generated job types are up to date
+        run: node schema/generate.mjs --check
