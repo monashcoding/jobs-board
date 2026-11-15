@@ -12,4 +12,4 @@ mongomock-motor>=0.0.21
 # Ships the IANA time zone database for zoneinfo. python:*-slim is Debian slim,
 # which does not include /usr/share/zoneinfo, so without this ZoneInfo raises at
 # runtime and the weekly recap loop dies silently.
-tzdata>=2024.1
+tzdata>=2026.6
