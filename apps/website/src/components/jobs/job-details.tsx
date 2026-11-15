@@ -1,5 +1,6 @@
 // frontend/src/components/jobs/job-details.tsx
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
@@ -20,7 +21,7 @@ import { addApplication } from "@/app/my-applications/actions";
 import { trackApplyClick } from "@/actions/analytics";
 import { sendGAEvent } from "@next/third-parties/google";
 import Link from "next/link";
-import { useMacSession } from "@/lib/mac-session";
+import { useMacSession } from "@monashcoding/auth/react";
 import { useSearchParams } from "next/navigation";
 
 const APPLY_SIGNIN_PROMPT_SESSION_KEY = "mp:apply-signin-prompt-shown:v1";
@@ -32,7 +33,7 @@ export default function JobDetails() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const signinPromptShownRef = useRef(false);
   const [showSigninModal, setShowSigninModal] = useState(false);
-  const { data: session, status: sessionStatus } = useMacSession();
+  const session = useMacSession();
   const searchParams = useSearchParams();
   const ref = searchParams.get("ref");
 
@@ -64,6 +65,7 @@ export default function JobDetails() {
         "true"
       ) {
         signinPromptShownRef.current = true;
+
         return false;
       }
 
@@ -73,6 +75,7 @@ export default function JobDetails() {
     }
 
     signinPromptShownRef.current = true;
+
     return true;
   };
 
@@ -92,7 +95,7 @@ export default function JobDetails() {
       company: selectedJob.company?.name || "Unknown",
     });
 
-    if (sessionStatus === "authenticated" && session?.user) {
+    if (session.status === "signed-in") {
       addApplication(selectedJob.id, {
         jobId: selectedJob.id,
         title: selectedJob.title,
@@ -103,7 +106,7 @@ export default function JobDetails() {
     } else {
       upsertLocalStartedApplication(selectedJob);
 
-      if (sessionStatus === "unauthenticated" && shouldShowSigninPrompt()) {
+      if (session.status === "signed-out" && shouldShowSigninPrompt()) {
         setShowSigninModal(true);
       }
     }
@@ -111,6 +114,7 @@ export default function JobDetails() {
 
   const handleCopyLink = () => {
     const jobUrl = `${window.location.origin}/jobs/${selectedJob.id}`;
+
     if (navigator && navigator.clipboard) {
       navigator.clipboard.writeText(jobUrl);
     }

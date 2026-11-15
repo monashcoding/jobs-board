@@ -1,19 +1,21 @@
 "use server";
 
 import { getMongoClientPromise } from "@/lib/mongodb";
-import { requireMacUserId } from "@/lib/mac-auth";
-import logger from "@/lib/logger";
+import { requireClaims } from "@monashcoding/auth/next";
+import { createRateLimiter, fail, ok, type Result } from "@monashcoding/server";
+import { env } from "@/lib/env";
+import { logger } from "@/lib/log";
 import type { Db } from "mongodb";
 import { ObjectId } from "mongodb";
 import {
-  ApplicationJobSnapshot,
-  ApplicationStatus,
-  ApplicationStatusEvent,
-  ApplicationStatusEventSource,
-  DbApplication,
+  type ApplicationJobSnapshot,
+  type ApplicationStatus,
+  type ApplicationStatusEvent,
+  type ApplicationStatusEventSource,
+  type DbApplication,
   DEFAULT_RECRUITMENT_CYCLE_ID,
-  LocalApplication,
-  RecruitmentCycle,
+  type LocalApplication,
+  type RecruitmentCycle,
 } from "@/types/application";
 
 type RecruitmentCycleRecord = {
@@ -50,6 +52,23 @@ type ApplicationStatusEventRecord = {
 };
 
 let statusEventIndexesPromise: Promise<string[]> | null = null;
+
+// A drag across the board is a burst of writes, so the ceiling is generous.
+const writeLimiter = createRateLimiter({ limit: 240, windowMs: 60_000 });
+
+async function requireMacUserId(): Promise<string> {
+  const claims = await requireClaims();
+
+  return claims.macUserId;
+}
+
+async function requireWriterId(): Promise<string> {
+  const userId = await requireMacUserId();
+
+  writeLimiter.enforce(userId);
+
+  return userId;
+}
 
 function serializeCycle(
   doc: Partial<RecruitmentCycleRecord>,
@@ -136,7 +155,9 @@ async function ensureStatusEventIndexes(db: Db) {
     await statusEventIndexesPromise;
   } catch (error) {
     statusEventIndexesPromise = null;
-    logger.warn({ error }, "Failed to ensure application status event indexes");
+    logger.warn("Failed to ensure application status event indexes", {
+      errorMessage: String(error),
+    });
   }
 }
 
@@ -168,21 +189,19 @@ async function recordApplicationStatusEvent(
         createdAt: new Date(),
       });
   } catch (error) {
-    logger.warn(
-      {
-        error,
-        jobId: event.jobId,
-        fromStatus: event.fromStatus,
-        toStatus: event.toStatus,
-      },
-      "Failed to record application status event",
-    );
+    logger.warn("Failed to record application status event", {
+      errorMessage: String(error),
+      jobId: event.jobId,
+      fromStatus: event.fromStatus,
+      toStatus: event.toStatus,
+    });
   }
 }
 
 function parseLocalDate(value: string | undefined, fallback: Date) {
   if (!value) return fallback;
   const date = new Date(value);
+
   return Number.isNaN(date.getTime()) ? fallback : date;
 }
 
@@ -190,7 +209,7 @@ export async function listRecruitmentCycles(): Promise<RecruitmentCycle[]> {
   const userId = await requireMacUserId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
 
   await ensureDefaultCycle(db, userId);
 
@@ -205,15 +224,17 @@ export async function listRecruitmentCycles(): Promise<RecruitmentCycle[]> {
 
 export async function createRecruitmentCycle(
   name: string,
-): Promise<RecruitmentCycle> {
-  const userId = await requireMacUserId();
+): Promise<Result<RecruitmentCycle, "name_required">> {
+  const userId = await requireWriterId();
   const trimmed = name.trim();
-  if (!trimmed) throw new Error("Cycle name is required");
+
+  if (!trimmed) return fail("name_required", "Cycle name is required");
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
   const now = new Date();
   const cycleId = new ObjectId().toString();
+
   const doc = {
     userId,
     cycleId,
@@ -228,19 +249,20 @@ export async function createRecruitmentCycle(
     .collection<RecruitmentCycleRecord>("application_cycles")
     .insertOne(doc);
 
-  return serializeCycle(doc);
+  return ok(serializeCycle(doc));
 }
 
 export async function renameRecruitmentCycle(
   cycleId: string,
   name: string,
-): Promise<RecruitmentCycle> {
-  const userId = await requireMacUserId();
+): Promise<Result<RecruitmentCycle, "name_required" | "cycle_not_found">> {
+  const userId = await requireWriterId();
   const trimmed = name.trim();
-  if (!trimmed) throw new Error("Cycle name is required");
+
+  if (!trimmed) return fail("name_required", "Cycle name is required");
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
   const now = new Date();
 
   await ensureDefaultCycle(db, userId);
@@ -255,23 +277,28 @@ export async function renameRecruitmentCycle(
     .collection<RecruitmentCycleRecord>("application_cycles")
     .findOne({ userId, cycleId });
 
-  if (!doc) throw new Error("Cycle not found");
-  return serializeCycle(doc);
+  if (!doc) return fail("cycle_not_found", "Cycle not found");
+
+  return ok(serializeCycle(doc));
 }
 
-export async function deleteRecruitmentCycle(cycleId: string) {
-  const userId = await requireMacUserId();
+export async function deleteRecruitmentCycle(
+  cycleId: string,
+): Promise<Result<{ moved: number }, "default_cycle">> {
+  const userId = await requireWriterId();
+
   if (cycleId === DEFAULT_RECRUITMENT_CYCLE_ID) {
-    throw new Error("The default cycle cannot be deleted");
+    return fail("default_cycle", "The default cycle cannot be deleted");
   }
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
 
   await ensureDefaultCycle(db, userId);
   await db
     .collection<RecruitmentCycleRecord>("application_cycles")
     .deleteOne({ userId, cycleId });
+
   const moved = await db.collection("applications").updateMany(
     { userId, cycleId },
     {
@@ -279,14 +306,14 @@ export async function deleteRecruitmentCycle(cycleId: string) {
     },
   );
 
-  return { ok: true, moved: moved.modifiedCount };
+  return ok({ moved: moved.modifiedCount });
 }
 
 export async function syncLocalApplications(apps: LocalApplication[]) {
-  const userId = await requireMacUserId();
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
   const collection = db.collection<ApplicationRecord>("applications");
 
   if (!apps.length) {
@@ -314,6 +341,7 @@ export async function syncLocalApplications(apps: LocalApplication[]) {
     const localStartedAt = parseLocalDate(app.startedAt, now);
     const localUpdatedAt = parseLocalDate(app.updatedAt, localStartedAt);
     const nextCycleId = app.cycleId ?? DEFAULT_RECRUITMENT_CYCLE_ID;
+
     const existing = await collection.findOne({
       userId,
       jobId: app.jobId,
@@ -392,7 +420,7 @@ export async function listApplications(): Promise<DbApplication[]> {
   const userId = await requireMacUserId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
 
   const docs = await db
     .collection<ApplicationRecord>("applications")
@@ -414,6 +442,7 @@ export async function listApplications(): Promise<DbApplication[]> {
     .filter((id): id is ObjectId => id !== null);
 
   const logoMap = new Map<string, string | undefined>();
+
   if (jobIds.length) {
     const jobs = await db
       .collection("active_jobs")
@@ -422,6 +451,7 @@ export async function listApplications(): Promise<DbApplication[]> {
         { projection: { _id: 1, "company.logo": 1 } },
       )
       .toArray();
+
     for (const job of jobs) {
       logoMap.set(job._id.toString(), job.company?.logo);
     }
@@ -438,7 +468,7 @@ export async function listApplicationStatusEvents(
   if (!jobIds.length) return [];
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
   await ensureStatusEventIndexes(db);
 
   const docs = await db
@@ -458,10 +488,10 @@ export async function addApplication(
   jobId: string,
   jobSnapshot: ApplicationJobSnapshot,
 ) {
-  const userId = await requireMacUserId();
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
   const now = new Date();
 
   const result = await db.collection("applications").updateOne(
@@ -491,10 +521,10 @@ export async function addApplication(
 }
 
 export async function deleteApplication(jobId: string) {
-  const userId = await requireMacUserId();
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
 
   await db.collection("applications").deleteOne({
     userId,
@@ -506,14 +536,15 @@ export async function deleteApplication(jobId: string) {
 
 export async function restoreDeletedApplication(
   application: DbApplication,
-): Promise<DbApplication> {
-  const userId = await requireMacUserId();
+): Promise<Result<DbApplication, "not_restored">> {
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
   const collection = db.collection<ApplicationRecord>("applications");
   const startedAt = new Date(application.startedAt);
   const updatedAt = new Date(application.updatedAt);
+
   const hasNotes =
     typeof application.notes === "string" &&
     application.notes.trim().length > 0;
@@ -544,8 +575,11 @@ export async function restoreDeletedApplication(
     jobId: application.jobId,
   });
 
-  if (!restored) throw new Error("Application could not be restored");
-  return serializeApplication(restored);
+  if (!restored) {
+    return fail("not_restored", "Application could not be restored");
+  }
+
+  return ok(serializeApplication(restored));
 }
 
 export async function createCustomApplication(
@@ -555,10 +589,10 @@ export async function createCustomApplication(
   date: string,
   cycleId = DEFAULT_RECRUITMENT_CYCLE_ID,
 ): Promise<DbApplication> {
-  const userId = await requireMacUserId();
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
 
   const jobId = `custom_${new ObjectId().toString()}`;
   const jobSnapshot: ApplicationJobSnapshot = { jobId, title, companyName };
@@ -597,10 +631,10 @@ export async function updateApplicationStatus(
   jobId: string,
   status: ApplicationStatus,
 ) {
-  const userId = await requireMacUserId();
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
   const collection = db.collection<ApplicationRecord>("applications");
   const existing = await collection.findOne({ userId, jobId });
 
@@ -628,10 +662,10 @@ export async function updateApplicationStatus(
 }
 
 export async function toggleApplicationStar(jobId: string, starred: boolean) {
-  const userId = await requireMacUserId();
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
 
   await db
     .collection("applications")
@@ -641,12 +675,13 @@ export async function toggleApplicationStar(jobId: string, starred: boolean) {
 }
 
 export async function updateApplicationNotes(jobId: string, notes: string) {
-  const userId = await requireMacUserId();
+  const userId = await requireWriterId();
 
   const client = await getMongoClientPromise();
-  const db = client.db(process.env.MONGODB_DATABASE || "default");
+  const db = client.db(env.MONGODB_DATABASE);
 
   const hasNotes = notes.trim().length > 0;
+
   const update = hasNotes
     ? { $set: { notes, updatedAt: new Date() } }
     : { $unset: { notes: "" }, $set: { updatedAt: new Date() } };

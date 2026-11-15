@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, Ref } from "react";
-import { useMacSession } from "@/lib/mac-session";
+import { useMacSession } from "@monashcoding/auth/react";
 import { Select } from "@mantine/core";
 import { IconDownload, IconExternalLink, IconX } from "@tabler/icons-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
-  ApplicationStatusEvent,
-  DbApplication,
+  type ApplicationStatusEvent,
+  type DbApplication,
   DEFAULT_RECRUITMENT_CYCLE_ID,
-  RecruitmentCycle,
-  UserStage,
+  type RecruitmentCycle,
+  type UserStage,
 } from "@/types/application";
 import macLogo from "@/assets/mac.svg";
 import AuthRequiredPanel from "@/components/auth/auth-required-panel";
@@ -148,6 +148,7 @@ function stageRole(status: string): UserStage["colorRole"] {
 
 function formatStageName(status: string | null | undefined) {
   if (!status) return "Unknown";
+
   if (isPipelineStage(status)) return STAGE_LABELS[status];
 
   return status
@@ -167,6 +168,7 @@ function formatCountPercent(value: number, total: number) {
 
 function percentNumber(value: number, total: number) {
   if (total <= 0) return 0;
+
   return Math.round((value / total) * 100);
 }
 
@@ -199,11 +201,13 @@ function staticAssetSrc(asset: string | { src: string }) {
 
 async function svgHrefToDataUri(href: string) {
   const response = await fetch(href);
+
   if (!response.ok) {
     throw new Error(`Failed to load SVG asset: ${href}`);
   }
 
   const svgText = await response.text();
+
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
 }
 
@@ -220,6 +224,7 @@ function buildEventsByJobId(events: ApplicationStatusEvent[]) {
 
   for (const event of events) {
     const existing = eventsByJobId.get(event.jobId);
+
     if (existing) existing.push(event);
     else eventsByJobId.set(event.jobId, [event]);
   }
@@ -266,6 +271,7 @@ function buildPipelineStats(
   const accepted = currentCounts.ACCEPTED;
   const rejected = currentCounts.REJECTED;
   const reachedApplied = Math.max(0, total - currentCounts.STARTED);
+
   const reachedInterview =
     currentCounts.INTERVIEW + accepted + postInterviewRejected;
 
@@ -412,6 +418,7 @@ function PipelineDotField() {
 
       if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
         mouseRef.current = { x: -1000, y: -1000 };
+
         return;
       }
 
@@ -429,6 +436,7 @@ function PipelineDotField() {
         const dx = dot.x - mouseRef.current.x;
         const dy = dot.y - mouseRef.current.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
+
         const opacity =
           distance < cursorRadius
             ? 0.08 + (1 - distance / cursorRadius) * 0.3
@@ -589,6 +597,7 @@ function ApplicationSankey({
               .sort((a, b) => b.value - a.value)
               .map((link) => {
                 const strokeWidth = 5 + (link.value / maxLinkValue) * 44;
+
                 return (
                   <motion.path
                     key={link.id}
@@ -758,6 +767,7 @@ function OutcomeMixPanel({
 
 function RejectionSplitPanel({ stats }: { stats: PipelineStats }) {
   const directPct = percentNumber(stats.directRejected, stats.rejected);
+
   const postInterviewPct = percentNumber(
     stats.postInterviewRejected,
     stats.rejected,
@@ -822,10 +832,12 @@ function InterviewYieldPanel({ stats }: { stats: PipelineStats }) {
     stats.reachedInterview,
     stats.reachedApplied,
   );
+
   const waitingForInterview = Math.max(
     0,
     stats.reachedApplied - stats.reachedInterview,
   );
+
   const waitingPct = percentNumber(waitingForInterview, stats.reachedApplied);
 
   return (
@@ -887,6 +899,7 @@ function StageDrilldownDrawer({
     }
 
     window.addEventListener("keydown", handleKeyDown);
+
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
@@ -1006,12 +1019,15 @@ export default function ApplicationsStatisticsClient({
 }) {
   const { status: sessionStatus } = useMacSession();
   const shouldReduceMotion = useReducedMotion();
+
   const [selectedCycleId, setSelectedCycleId] = useState(
     initialCycles[0]?.id ?? DEFAULT_RECRUITMENT_CYCLE_ID,
   );
+
   const [selectedStage, setSelectedStage] = useState<PipelineStageName | null>(
     null,
   );
+
   const sankeySvgRef = useRef<SVGSVGElement | null>(null);
 
   const selectedCycle = initialCycles.find(
@@ -1066,6 +1082,7 @@ export default function ApplicationsStatisticsClient({
     stats.currentCounts.STARTED +
     stats.currentCounts.APPLIED +
     stats.currentCounts.INTERVIEW;
+
   const cycleSelectWidth = Math.min(
     280,
     Math.max(150, selectedCycle.name.length * 8 + 62),
@@ -1073,6 +1090,7 @@ export default function ApplicationsStatisticsClient({
 
   async function downloadPipelineImage() {
     const svg = sankeySvgRef.current;
+
     if (!svg) return;
     const macLogoHref = await macLogoDataUri();
 
@@ -1093,6 +1111,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "g",
     );
+
     sankeyDiagram.setAttribute(
       "transform",
       `translate(${SANKEY_EXPORT_DIAGRAM_OFFSET_X}, ${SANKEY_EXPORT_DIAGRAM_OFFSET_Y})`,
@@ -1100,7 +1119,9 @@ export default function ApplicationsStatisticsClient({
 
     const sankeyLinks = clone.querySelector(".stats-sankey-links");
     const sankeyNodes = clone.querySelector(".stats-sankey-nodes");
+
     if (sankeyLinks) sankeyDiagram.appendChild(sankeyLinks);
+
     if (sankeyNodes) sankeyDiagram.appendChild(sankeyNodes);
     clone.appendChild(sankeyDiagram);
 
@@ -1108,6 +1129,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "style",
     );
+
     style.textContent = `
       text { font-family: Poppins, Arial, sans-serif; }
       .stats-sankey-link { fill: none; stroke-linecap: round; opacity: 0.34; }
@@ -1122,6 +1144,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "rect",
     );
+
     background.setAttribute("x", "0");
     background.setAttribute("y", "0");
     background.setAttribute("width", String(SANKEY_EXPORT_WIDTH));
@@ -1129,10 +1152,12 @@ export default function ApplicationsStatisticsClient({
     background.setAttribute("fill", "#1a1a1a");
 
     const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+
     const dotPattern = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "pattern",
     );
+
     dotPattern.setAttribute("id", "stats-export-dot-pattern");
     dotPattern.setAttribute("width", "25");
     dotPattern.setAttribute("height", "25");
@@ -1142,6 +1167,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "circle",
     );
+
     dot.setAttribute("cx", "1");
     dot.setAttribute("cy", "1");
     dot.setAttribute("r", "1");
@@ -1154,6 +1180,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "rect",
     );
+
     dotLayer.setAttribute("x", "0");
     dotLayer.setAttribute("y", "0");
     dotLayer.setAttribute("width", String(SANKEY_EXPORT_WIDTH));
@@ -1164,6 +1191,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "text",
     );
+
     title.setAttribute("x", "34");
     title.setAttribute("y", "52");
     title.setAttribute("fill", "#ffffff");
@@ -1175,6 +1203,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "line",
     );
+
     titleUnderline.setAttribute("x1", "34");
     titleUnderline.setAttribute("y1", "67");
     titleUnderline.setAttribute(
@@ -1189,10 +1218,12 @@ export default function ApplicationsStatisticsClient({
 
     const brandCenterX = SANKEY_EXPORT_WIDTH - 78;
     const brandLogoSize = 38;
+
     const brandLogo = document.createElementNS(
       "http://www.w3.org/2000/svg",
       "image",
     );
+
     brandLogo.setAttribute("x", String(brandCenterX - brandLogoSize / 2));
     brandLogo.setAttribute("y", "24");
     brandLogo.setAttribute("width", String(brandLogoSize));
@@ -1208,6 +1239,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "text",
     );
+
     brandText.setAttribute("x", String(brandCenterX));
     brandText.setAttribute("y", "78");
     brandText.setAttribute("fill", "#fee22f");
@@ -1219,6 +1251,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "tspan",
     );
+
     brandTextTop.setAttribute("x", String(brandCenterX));
     brandTextTop.textContent = "Monash Association";
 
@@ -1226,6 +1259,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "tspan",
     );
+
     brandTextBottom.setAttribute("x", String(brandCenterX));
     brandTextBottom.setAttribute("dy", "8");
     brandTextBottom.textContent = "of Coding";
@@ -1235,6 +1269,7 @@ export default function ApplicationsStatisticsClient({
       "http://www.w3.org/2000/svg",
       "text",
     );
+
     website.setAttribute("x", String(SANKEY_EXPORT_WIDTH - 22));
     website.setAttribute("y", String(SANKEY_EXPORT_HEIGHT - 18));
     website.setAttribute("fill", "#8f8f8f");
@@ -1250,9 +1285,11 @@ export default function ApplicationsStatisticsClient({
     clone.append(title, titleUnderline, brandLogo, brandText, website);
 
     const serialized = new XMLSerializer().serializeToString(clone);
+
     const blob = new Blob([serialized], {
       type: "image/svg+xml;charset=utf-8",
     });
+
     const objectUrl = URL.createObjectURL(blob);
     const image = new Image();
     const filename = `${safeFilename(selectedCycle.name)}-pipeline-flow.png`;
@@ -1264,8 +1301,10 @@ export default function ApplicationsStatisticsClient({
       canvas.height = SANKEY_EXPORT_HEIGHT * scale;
 
       const context = canvas.getContext("2d");
+
       if (!context) {
         URL.revokeObjectURL(objectUrl);
+
         return;
       }
 
@@ -1287,7 +1326,7 @@ export default function ApplicationsStatisticsClient({
     image.src = objectUrl;
   }
 
-  if (sessionStatus === "unauthenticated") {
+  if (sessionStatus === "signed-out") {
     return <AuthRequiredPanel screen="statistics" />;
   }
 

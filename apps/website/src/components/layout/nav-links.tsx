@@ -1,13 +1,16 @@
 "use client";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMacSession, signOutCentral } from "@/lib/mac-session";
+import { useMacSession } from "@monashcoding/auth/react";
+import { signOutCentral, useProfileImage } from "@/lib/session";
 import { Avatar, Menu } from "@mantine/core";
 import { IconUser, IconLogout } from "@tabler/icons-react";
 
 export default function NavLinks() {
   const pathname = usePathname();
-  const { data: session, status } = useMacSession();
+  const session = useMacSession();
+  const profileImage = useProfileImage(session.status === "signed-in");
 
   const linkClass = (href: string) =>
     `text-lg ${pathname === href ? "font-bold underline-fancy" : ""}`;
@@ -27,18 +30,18 @@ export default function NavLinks() {
         Statistics
       </Link>
 
-      {status === "authenticated" ? (
+      {session.status === "signed-in" ? (
         <Menu position="bottom-end" offset={8}>
           <Menu.Target>
             <Avatar
-              src={session.user?.image ?? undefined}
-              alt={session.user?.name ?? "Profile"}
+              src={profileImage}
+              alt={session.user.name || "Profile"}
               color="accent"
               radius="xl"
               size="sm"
               className="cursor-pointer"
             >
-              {session.user?.name ? (
+              {session.user.name ? (
                 session.user.name
                   .split(" ")
                   .map((n) => n[0])
@@ -51,7 +54,7 @@ export default function NavLinks() {
             </Avatar>
           </Menu.Target>
           <Menu.Dropdown>
-            <Menu.Label>{session.user?.email}</Menu.Label>
+            <Menu.Label>{session.user.email}</Menu.Label>
             <Menu.Divider />
             <Menu.Item
               color="red"
