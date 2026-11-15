@@ -25,7 +25,10 @@ apps/
 ├── website/      # Next.js job board (jobs.monashcoding.com)
 ├── service/      # Go scraper and processing pipeline that fills MongoDB
 └── discord-bot/  # Python Discord bot that posts jobs to a forum channel
+schema/           # the job listing schema and the generator for each app's types
 ```
+
+All three apps share one job document. `schema/job.schema.json` defines it, and `node schema/generate.mjs` writes the Go structs, TypeScript types and Python constants from it (`schema/README.md`).
 
 Each app builds and deploys on its own. See `docs/deploy.md` for the website and the `DEPLOY-DOKPLOY.md` in `apps/service` and `apps/discord-bot`.
 
