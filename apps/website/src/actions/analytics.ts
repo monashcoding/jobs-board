@@ -1,15 +1,26 @@
 "use server";
 
+import { clientAddress, createRateLimiter } from "@monashcoding/server";
+import { headers } from "next/headers";
 import { getMongoClientPromise } from "@/lib/mongodb";
 
 const VIEWS_COLLECTION = "job_views";
 const CLICKS_COLLECTION = "job_apply_clicks";
+
+// Browsing the list records a view per job opened, so the ceiling is generous.
+const trackingLimiter = createRateLimiter({ limit: 120, windowMs: 60_000 });
+
+async function mayTrack(): Promise<boolean> {
+  return trackingLimiter.check(clientAddress(await headers())).allowed;
+}
 
 export async function trackJobView(data: {
   jobId: string;
   ref?: string | null;
 }) {
   try {
+    if (!(await mayTrack())) return;
+
     const client = await getMongoClientPromise();
     const db = client.db("default");
     await db.collection(VIEWS_COLLECTION).insertOne({
@@ -29,6 +40,8 @@ export async function trackApplyClick(job: {
   ref?: string | null;
 }) {
   try {
+    if (!(await mayTrack())) return;
+
     const client = await getMongoClientPromise();
     const db = client.db("default");
     await db.collection(CLICKS_COLLECTION).insertOne({
