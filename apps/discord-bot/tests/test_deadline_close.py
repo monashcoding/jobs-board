@@ -48,6 +48,7 @@ def _thread(history_messages: list, applied: list | None = None) -> MagicMock:
     thread.applied_tags = applied if applied is not None else []
     thread.parent = None
     thread.parent_id = 3
+    thread.archived = False
     thread.edit = AsyncMock()
     thread.send = AsyncMock()
 
@@ -238,3 +239,25 @@ async def test_closing_without_a_parent_still_orders_what_is_left():
         if "applied_tags" in c.kwargs
     )
     assert [t.name for t in tags] == ["Graduate", "Anyone Can Apply"]
+
+
+async def test_closing_an_archived_thread_reopens_it_first():
+    # Discord rejects any other edit to an archived thread, so the rename has
+    # to come after the reopen, and the closure has to be recorded.
+    thread = _thread([_message(BOT_USER)])
+    thread.archived = True
+    watcher = _watcher()
+    mark = AsyncMock()
+
+    with patch(
+        "src.cogs.workers.deadline_watcher.job_post_db.mark_reminder_sent",
+        new=mark,
+    ):
+        await watcher._on_closed(thread, _post())
+
+    first, second = thread.edit.await_args_list[:2]
+
+    assert first.kwargs == {"archived": False}
+    assert "name" in second.kwargs
+    assert _archived_calls(thread), "it goes back to archived once it is closed"
+    mark.assert_awaited_once()
