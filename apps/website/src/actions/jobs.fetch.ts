@@ -1,8 +1,9 @@
 import { MongoClient, ObjectId } from "mongodb";
-import { JobFilters, CompanyFacet } from "@/types/filters";
-import { Job } from "@/types/job";
+import type { JobFilters, CompanyFacet } from "@/types/filters";
+import type { Job } from "@/types/job";
 import serializeJob from "@/lib/utils";
-import logger from "@/lib/logger";
+import { logger } from "@/lib/log";
+import { getMongoUri } from "@/lib/mongodb";
 import { LRUCache } from "lru-cache";
 
 const PAGE_SIZE = 20;
@@ -34,6 +35,7 @@ function normalizeFiltersForKey(
     "jobTypes[]",
     "excludedCompanies[]",
   ];
+
   const normalized: Record<string, string> = {
     search: (filters.search || "").toLowerCase().trim(),
     page: (filters.page || 1).toString(),
@@ -41,12 +43,14 @@ function normalizeFiltersForKey(
 
   arrayFields.forEach((field) => {
     const val = filters[field as keyof Partial<JobFilters>];
+
     if (val !== undefined) {
       const arr = Array.isArray(val)
         ? val
         : typeof val === "string"
           ? [val]
           : [];
+
       normalized[field] = arr.sort().join(",");
     }
   });
@@ -54,6 +58,7 @@ function normalizeFiltersForKey(
   // Include other scalar fields if present
   if (filters.jobTypes)
     normalized.jobTypes = (filters.jobTypes as string[]).sort().join(",");
+
   if (filters.locations)
     normalized.locations = (filters.locations as string[]).sort().join(",");
   // Add similar for others if needed, but since searchParams uses [] keys, prioritize those
@@ -72,7 +77,9 @@ function readArrayFilter(
   plainKey: string,
 ): string[] {
   const val = source[bracketKey] ?? source[plainKey];
+
   if (val === undefined || val === null) return [];
+
   return Array.isArray(val) ? (val as string[]) : [String(val)];
 }
 
@@ -97,13 +104,17 @@ function buildJobQuery(
     "workingRights[]",
     "workingRights",
   );
+
   const locations = readArrayFilter(raw, "locations[]", "locations");
+
   const industryFields = readArrayFilter(
     raw,
     "industryFields[]",
     "industryFields",
   );
+
   const jobTypes = readArrayFilter(raw, "jobTypes[]", "jobTypes");
+
   const excludedCompanies = readArrayFilter(
     raw,
     "excludedCompanies[]",
@@ -128,6 +139,7 @@ function buildJobQuery(
     }),
     ...additional,
   };
+
   return query;
 }
 
@@ -136,22 +148,29 @@ function buildJobQuery(
  * @param callback - The function that uses the connected MongoClient.
  * @returns The result from the callback.
  */
-async function withDbConnection<T>(
-  callback: (client: MongoClient) => Promise<T>,
-): Promise<T> {
-  if (!process.env.MONGODB_URI) {
+function readMongoUri(): string {
+  try {
+    return getMongoUri();
+  } catch {
     logger.error("MONGODB_URI environment variable is not set");
     throw new Error(
       "MongoDB URI is not configured. Please check environment variables.",
     );
   }
-  const client = new MongoClient(process.env.MONGODB_URI);
+}
+
+async function withDbConnection<T>(
+  callback: (client: MongoClient) => Promise<T>,
+): Promise<T> {
+  const client = new MongoClient(readMongoUri());
+
   try {
     await client.connect();
     logger.debug("MongoDB connected successfully");
+
     return await callback(client);
   } catch (error) {
-    logger.error(error, "Failed to connect to MongoDB or execute callback");
+    logger.error("Failed to connect to MongoDB or execute callback", error);
     throw error;
   } finally {
     await client.close();
@@ -187,12 +206,17 @@ export async function getJobs(
 
   // Check cache first
   const cached = jobCache.get(cacheKey);
+
   if (cached) {
-    logger.debug({ cacheKey }, "Returning cached jobs");
+    logger.debug("Returning cached jobs", { cacheKey });
+
     return cached as { jobs: Job[]; total: number };
   }
 
-  logger.info({ filters, minSponsors }, "Fetching jobs with filters");
+  logger.info("Fetching jobs with filters", {
+    filters: JSON.stringify(filters),
+    minSponsors,
+  });
 
   return await withDbConnection(async (client) => {
     const collection = client.db("default").collection("active_jobs");
@@ -210,14 +234,18 @@ export async function getJobs(
             .toArray(),
           collection.countDocuments(query),
         ]);
-        logger.debug({ total }, "Fetched non-sponsored jobs");
+
+        logger.debug("Fetched non-sponsored jobs", { total });
+
         const result = {
           jobs: (jobs as MongoJob[])
             .map(serializeJob)
             .map((job) => ({ ...job, highlight: false })),
           total,
         };
+
         jobCache.set(cacheKey, result);
+
         return result;
       } else {
         const sponsoredQuery = { ...query, is_sponsored: true };
@@ -261,23 +289,26 @@ export async function getJobs(
           ...otherJobs.map((job) => ({ ...job, highlight: false })),
         ].slice(0, PAGE_SIZE);
 
-        logger.debug(
-          {
-            sponsoredCount: sponsoredJobs.length,
-            otherCount: otherJobs.length,
-            total,
-          },
-          "Fetched sponsored and other jobs",
-        );
+        logger.debug("Fetched sponsored and other jobs", {
+          sponsoredCount: sponsoredJobs.length,
+          otherCount: otherJobs.length,
+          total,
+        });
+
         const result = {
           jobs: (mergedJobs as MongoJob[]).map(serializeJob),
           total,
         };
+
         jobCache.set(cacheKey, result);
+
         return result;
       }
     } catch (error) {
-      logger.error({ query, filters }, "Error fetching jobs");
+      logger.error("Error fetching jobs", error, {
+        query: JSON.stringify(query),
+        filters: JSON.stringify(filters),
+      });
       throw error;
     }
   });
@@ -291,26 +322,33 @@ export async function getJobById(id: string): Promise<Job | null> {
 
   // Check cache first
   const cached = jobCache.get(cacheKey);
+
   if (cached) {
-    logger.debug({ id }, "Returning cached job");
+    logger.debug("Returning cached job", { id });
+
     return cached as Job;
   }
 
-  logger.info({ id }, "Fetching job by ID");
+  logger.info("Fetching job by ID", { id });
 
   return await withDbConnection(async (client) => {
     const collection = client.db("default").collection("active_jobs");
+
     const job = await collection.findOne({
       _id: new ObjectId(id),
       outdated: false,
     });
+
     if (!job) {
-      logger.warn({ id }, "Job not found");
+      logger.warn("Job not found", { id });
+
       return null;
     }
-    logger.debug({ id }, "Job fetched successfully");
+
+    logger.debug("Job fetched successfully", { id });
     const serializedJob = serializeJob(job as MongoJob);
     jobCache.set(cacheKey, serializedJob);
+
     return serializedJob;
   });
 }
@@ -327,9 +365,12 @@ function companyFacetCacheKey(filters: Partial<JobFilters>): string {
       : val
         ? [String(val)]
         : [];
+
     return [...arr].sort().join(",");
   };
+
   const f = filters as Record<string, unknown>;
+
   const norm = {
     search: (filters.search || "").toLowerCase().trim(),
     jobTypes: sorted(f["jobTypes[]"] ?? f.jobTypes),
@@ -337,6 +378,7 @@ function companyFacetCacheKey(filters: Partial<JobFilters>): string {
     industryFields: sorted(f["industryFields[]"] ?? f.industryFields),
     workingRights: sorted(f["workingRights[]"] ?? f.workingRights),
   };
+
   return `facets:companies:${JSON.stringify(norm)}`;
 }
 
@@ -354,15 +396,20 @@ export async function getCompanyFacets(
   const cacheKey = companyFacetCacheKey(filters);
 
   const cached = facetCache.get(cacheKey);
+
   if (cached) {
-    logger.debug({ cacheKey }, "Returning cached company facets");
+    logger.debug("Returning cached company facets", { cacheKey });
+
     return cached;
   }
 
-  logger.info({ filters }, "Fetching company facets");
+  logger.info("Fetching company facets", {
+    filters: JSON.stringify(filters),
+  });
 
   return await withDbConnection(async (client) => {
     const collection = client.db("default").collection("active_jobs");
+
     const query = buildJobQuery(filters, undefined, {
       includeCompanyExclusion: false,
     });
@@ -384,10 +431,14 @@ export async function getCompanyFacets(
         .map((r) => ({ company: r._id, count: r.count }));
 
       facetCache.set(cacheKey, facets);
-      logger.debug({ count: facets.length }, "Fetched company facets");
+      logger.debug("Fetched company facets", { count: facets.length });
+
       return facets;
     } catch (error) {
-      logger.error({ query, filters }, "Error fetching company facets");
+      logger.error("Error fetching company facets", error, {
+        query: JSON.stringify(query),
+        filters: JSON.stringify(filters),
+      });
       throw error;
     }
   });
