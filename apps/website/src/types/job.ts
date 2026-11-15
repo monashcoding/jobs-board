@@ -1,14 +1,30 @@
-// frontend/src/types/job.ts
-export const JOB_TYPES = [
+import type {
+  IndustryField,
+  JobType,
+  LocationType,
+  WorkingRight,
+} from "./job.gen";
+
+export type {
+  IndustryField,
+  JobType,
+  LocationType,
+  WorkingRight,
+} from "./job.gen";
+
+/*
+ * The enum types come from schema/job.schema.json through job.gen.ts. The
+ * lists below are the values the filter UI offers, which is a subset: the
+ * scraper never stores EOI, and APAC has no filter of its own.
+ */
+export const JOB_TYPES: readonly JobType[] = [
   "PRE_PENULTIMATE",
   "INTERN",
   "GRADUATE",
   "OTHER",
-] as const;
+];
 
-export type JobType = (typeof JOB_TYPES)[number];
-
-export const LOCATIONS = [
+export const LOCATIONS: readonly LocationType[] = [
   "VIC",
   "NSW",
   "QLD",
@@ -19,51 +35,27 @@ export const LOCATIONS = [
   "TAS",
   "AUSTRALIA",
   "OTHERS",
-] as const;
+];
 
-export type LocationType = (typeof LOCATIONS)[number];
+export { WORKING_RIGHT_VALUES as WORKING_RIGHTS } from "./job.gen";
 
-export const WORKING_RIGHTS = [
-  "AUS_CITIZEN_PR",
-  "NZ_CITIZEN_PR",
-  "INTERNATIONAL",
-  "OTHER_RIGHTS",
-] as const;
-
-export type WorkingRight = (typeof WORKING_RIGHTS)[number];
-
-export const INDUSTRY_FIELDS = [
-  "CONSULTING",
-  "BANKS",
-  "BIG_TECH",
-  "TECH",
-  "QUANT_TRADING",
-  "ENERGY",
-  "GOVERNMENT",
-  "MANUFACTURING",
-  "TELECOMMUNICATIONS",
-  "RETAIL",
-  "TRANSPORTATION",
-  "OTHER_INDUSTRY",
-] as const;
-
-export type IndustryField = (typeof INDUSTRY_FIELDS)[number];
+export { INDUSTRY_FIELD_VALUES as INDUSTRY_FIELDS } from "./job.gen";
 
 export interface Company {
   name: string;
-  website?: string;
-  logo?: string;
+  website?: string | null;
+  logo?: string | null;
 }
 
 export interface Job {
   id: string;
   title: string;
-  description?: string;
-  one_liner?: string;
+  description?: string | null;
+  one_liner?: string | null;
   company: Company;
-  application_url?: string;
+  application_url?: string | null;
   source_urls: string[];
-  type?: JobType;
+  type?: JobType | null;
   close_date?: string;
   locations: LocationType[];
   industry_field?: IndustryField;

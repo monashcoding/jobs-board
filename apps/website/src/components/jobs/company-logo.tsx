@@ -4,8 +4,8 @@ import { useState } from "react";
 
 interface CompanyLogoProps {
   name: string;
-  logo?: string;
-  applicationUrl?: string;
+  logo?: string | null;
+  applicationUrl?: string | null;
   className?: string;
 }
 

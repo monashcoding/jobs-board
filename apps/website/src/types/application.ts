@@ -36,8 +36,8 @@ export type ApplicationJobSnapshot = {
   jobId: string;
   title: string;
   companyName: string;
-  applicationUrl?: string;
-  logo?: string;
+  applicationUrl?: string | null;
+  logo?: string | null;
 };
 
 export type LocalApplication = {

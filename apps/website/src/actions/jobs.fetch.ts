@@ -1,6 +1,7 @@
 import { MongoClient, ObjectId } from "mongodb";
 import type { JobFilters, CompanyFacet } from "@/types/filters";
 import type { Job } from "@/types/job";
+import type { ListingDocument } from "@/types/job.gen";
 import serializeJob from "@/lib/utils";
 import { logger } from "@/lib/log";
 import { getMongoUri } from "@/lib/mongodb";
@@ -444,8 +445,7 @@ export async function getCompanyFacets(
   });
 }
 
-// Define the MongoJob interface with the correct DB field names.
-export interface MongoJob extends Omit<Job, "id"> {
-  _id: ObjectId;
-  is_sponsored: boolean;
+/** A listing as stored, plus the flag the listing page adds for sponsors. */
+export interface MongoJob extends ListingDocument {
+  highlight: boolean;
 }
