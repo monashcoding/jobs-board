@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Final
+import ssl
+from typing import Any, Final
 
 from sqlalchemy import text
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -22,6 +24,32 @@ _ADDITIVE_COLUMNS: Final[tuple[str, ...]] = (
 )
 
 
+_LOCAL_HOSTS: Final[frozenset[str]] = frozenset({"localhost", "127.0.0.1", "::1"})
+
+# libpq options a managed Postgres puts in its connection string. asyncpg takes
+# none of them: TLS is passed to it as an SSLContext instead.
+_LIBPQ_ONLY_OPTIONS: Final[tuple[str, ...]] = ("sslmode", "channel_binding")
+
+
+def engine_settings(dsn: str) -> tuple[URL, dict[str, Any]]:
+    """Return the engine URL and connect arguments for *dsn*.
+
+    A database on this machine, or one named without a dot (another container
+    on the same Docker network), connects in the clear. Any other host is
+    reached over TLS with its certificate verified against the system roots,
+    whatever `sslmode` the connection string asks for.
+    """
+    url = make_url(dsn)
+    if url.drivername in ("postgresql", "postgres"):
+        url = url.set(drivername="postgresql+asyncpg")
+    url = url.difference_update_query(_LIBPQ_ONLY_OPTIONS)
+
+    host = url.host or ""
+    if host in _LOCAL_HOSTS or "." not in host:
+        return url, {}
+    return url, {"ssl": ssl.create_default_context()}
+
+
 class Database:
     """Async SQLAlchemy/SQLModel database wrapper. Singleton via module-level `db`."""
 
@@ -33,10 +61,11 @@ class Database:
         """Initialize engine and create tables. Call once at startup."""
         if not dsn:
             raise ValueError("DATABASE_URL is not set")
-        if dsn.startswith("postgresql://"):
-            dsn = dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+        url, connect_args = engine_settings(dsn)
         _log.info("Connecting to SQL database")
-        self._engine = create_async_engine(dsn, pool_size=5, max_overflow=5)
+        self._engine = create_async_engine(
+            url, pool_size=5, max_overflow=5, connect_args=connect_args
+        )
         self._session_factory = async_sessionmaker(
             self._engine, class_=AsyncSession, expire_on_commit=False
         )
