@@ -3,10 +3,9 @@
 # ---------------------------------------------------------------------------
 # mploy webapp — self-hosted image (Oracle Cloud + Dokploy).
 #
-# Build context is frontend/ (this directory). mploy's frontend is a
+# Build context is apps/website/ (this directory). mploy's frontend is a
 # self-contained npm app — NOT a pnpm workspace — so npm ci resolves
-# everything from frontend/package-lock.json. The Spring Boot backend is a
-# separate service and is not part of this image.
+# everything from apps/website/package-lock.json.
 #
 # There are NO build-time vars: the app has no NEXT_PUBLIC_* values (the GA id
 # is hardcoded), and `next build` does NOT touch MongoDB (every DB route is

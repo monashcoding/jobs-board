@@ -1,8 +1,8 @@
 node_modules/
-frontend/node_modules/
+apps/website/node_modules/
 
 .next/
-frontend/.next/
+apps/website/.next/
 dist/
 build/
 coverage/
