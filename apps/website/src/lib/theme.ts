@@ -54,5 +54,6 @@ const theme = createTheme({
     accent: colorsTuple("#ffe22f"),
   },
   primaryColor: "dark",
+  defaultRadius: "sm",
 });
 export { theme };
