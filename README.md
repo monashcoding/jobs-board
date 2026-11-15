@@ -18,7 +18,18 @@ This is a modern, intelligent job board platform that automatically aggregates j
 - Parallel data fetching for faster loads
 - Real-time job search with debouncing
 
-## Frontend
+## Repository layout
+
+```
+apps/
+├── website/      # Next.js job board (jobs.monashcoding.com)
+├── service/      # Go scraper and processing pipeline that fills MongoDB
+└── discord-bot/  # Python Discord bot that posts jobs to a forum channel
+```
+
+Each app builds and deploys on its own. See `docs/deploy.md` for the website and the `DEPLOY-DOKPLOY.md` in `apps/service` and `apps/discord-bot`.
+
+## Website (`apps/website`)
 
 - Next.js 15: Utilizing the App Router for server-side rendering and optimized client-side navigation
 - React 19: For building the interactive user interface components
@@ -55,22 +66,21 @@ src/
 
 - Server Actions: Answers search and feedback requests
 - MongoDB: Stores job listings and related metadata
-- GoLang: Powers our web robots (this part is not open source)
+- Go: the scraper and pipeline in `apps/service`
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 20+
-- Java 17
-- Go 1.21+
+- Node.js 20+ (website)
+- Go 1.23+ (service)
+- Python 3.12+ (discord-bot)
 - Docker & Docker Compose
-- Redis
 
 ### Local Development
 
 ```bash
-cd frontend
+cd apps/website
 npm install
 npm run dev
 ```
@@ -91,14 +101,13 @@ NODE_ENV=development
 
 #### Branch Structure
 
-- `production` - Production branch
-- `dev` - Development branch
+- `development` - default branch, deployed on push
 - Feature branches follow the pattern:
   ```
   <component>/<developer>/<feature-name>
   Examples:
-  - backend/edwn/redis-caching
-  - frontend/sarah/job-filters
+  - service/edwn/redis-caching
+  - website/sarah/job-filters
   ```
 
 ### Coding Conventions
@@ -108,10 +117,13 @@ NODE_ENV=development
 - Prioritize server components; use "use client" only when needed.
 - Build with scalability and observability in mind (e.g., structured logging with Pino).
 
-## Deployment (Development and Production)
+## Deployment
 
-- We are deployed on Azure Container Apps via Github Actions.
-- GitHub Actions -> builds containers -> Azure Containers Registry -> Azure Container Apps.
+All three apps run on the MAC Oracle box under Dokploy, from the `development` branch.
+
+- `apps/website`: GitHub Actions builds an arm64 image to GHCR and Dokploy pulls it (`docs/deploy.md`).
+- `apps/service`: Dokploy builds `apps/service/Dockerfile` and a Dokploy Schedule runs the scraper (`apps/service/DEPLOY-DOKPLOY.md`).
+- `apps/discord-bot`: Dokploy runs `apps/discord-bot/docker-compose.prod.yml` (`apps/discord-bot/DEPLOY-DOKPLOY.md`).
 
 ## License
 

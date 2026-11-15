@@ -11,10 +11,12 @@ In Dokploy: **Project → Create Service → Application**.
 
 | Field | Value |
 | --- | --- |
-| Provider | GitHub → `monashcoding/mploy-golang-core` |
+| Provider | GitHub → `monashcoding/jobs-board` |
 | Branch | `development` |
 | Build type | Dockerfile |
+| Build path | `/apps/service` |
 | Dockerfile path | `Dockerfile` |
+| Watch paths | `apps/service/**` |
 
 No domain and no port are needed — the scraper exposes no HTTP server, so leave
 the Domains tab empty.
@@ -100,6 +102,3 @@ by the pipeline logs, and a Discord message from the webhook.
 - **Debug output** is written to `/app/debug/write-json` inside the container.
   Add a Dokploy volume mounted at `/app/debug` if you want it to survive
   redeploys.
-- **GitHub Actions** (`.github/workflows/run-scraper.yml`) is left intact as a
-  manual `workflow_dispatch` fallback. Its schedule is still commented out, so
-  the two won't double-run.

@@ -1,4 +1,4 @@
-# Discord Bot Template
+# Jobs Discord Bot
 
 A reusable Discord bot template using discord.py, SQLModel, and asyncpg. Based on the architecture of [karma-bot](https://github.com/monashcoding/karma-bot).
 
@@ -143,18 +143,11 @@ python -m pytest tests/ -v
    ruff check .
    ```
 4. Commit using [Conventional Commits](https://www.conventionalcommits.org) (enforced by pre-commit)
-5. Open a pull request against `main`
+5. Open a pull request against `development`
 
 > **Linting:** This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and import sorting. CI will fail if `ruff check .` reports any errors. Run it locally before pushing.
 
 ## Deployment
-
-Tag a release to trigger the Docker build and push to GitHub Container Registry:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
 
 Production uses `docker-compose.prod.yml`, a standalone stack of the bot plus a managed Postgres service, with `restart: always`, log rotation, and `DATABASE_URL` built from `POSTGRES_PASSWORD`:
 

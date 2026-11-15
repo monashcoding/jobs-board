@@ -24,12 +24,11 @@ The box only ever runs the finished containers.
 
 ## This app's shape (why the config looks the way it does)
 
-- The webapp is `frontend/` — a **self-contained npm app** (not a pnpm
-  workspace), so the Docker **build context is `frontend/`** and deps install
-  with `npm ci` from `frontend/package-lock.json`. The Spring Boot `backend/`
-  is a separate service, not part of this image.
+- The webapp is `apps/website/` — a **self-contained npm app** (not a pnpm
+  workspace), so the Docker **build context is `apps/website/`** and deps
+  install with `npm ci` from `apps/website/package-lock.json`.
 - Next.js is built with `output: "standalone"`; the runtime just runs
-  `node server.js`. `outputFileTracingRoot` is pinned to `frontend/` so the
+  `node server.js`. `outputFileTracingRoot` is pinned to `apps/website/` so the
   standalone entrypoint always lands at `.next/standalone/server.js`.
 - **No build-time vars.** There are no `NEXT_PUBLIC_*` values (the Google
   Analytics id is hardcoded), and `next build` does **not** touch MongoDB —

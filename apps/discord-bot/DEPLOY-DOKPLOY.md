@@ -25,24 +25,7 @@ Needed once, before any of the below. At
 Manage Threads is the one to check: without it the bot cannot archive, unarchive
 or delete a post, so deadline closing and every reconciliation command fail.
 
-## 1. Cut a release
-
-Tag the commit you intend to run, so the deployed revision has a name:
-
-```bash
-git tag v1.1.0
-git push origin v1.1.0
-```
-
-That triggers `.github/workflows/release.yml`, which publishes
-`ghcr.io/monashcoding/jobs-bot` to the GitHub Container Registry.
-
-Note that the compose route below **builds from the branch it is pointed at**:
-`docker-compose.yml` declares `build: .` and no `image:`, so the published image
-is a record of the release rather than what Dokploy runs. Point the service at
-the tag (or at `main` once the tag is merged) so the two agree.
-
-## 2. Create the service
+## 1. Create the service
 
 The bot needs Postgres alongside it, and `docker-compose.prod.yml` describes
 exactly that pairing -- the bot, a managed `postgres:16-alpine` with a
@@ -52,9 +35,10 @@ In Dokploy: **Project → Create Service → Compose**.
 
 | Field | Value |
 | --- | --- |
-| Provider | GitHub → `monashcoding/jobs-bot` |
-| Branch | `main` |
-| Compose path | `docker-compose.prod.yml` |
+| Provider | GitHub → `monashcoding/jobs-board` |
+| Branch | `development` |
+| Compose path | `./apps/discord-bot/docker-compose.prod.yml` |
+| Watch paths | `apps/discord-bot/**` |
 
 **One file, and it must be the prod one.** Dokploy accepts a single compose file
 per service ([Dokploy/dokploy#1727](https://github.com/Dokploy/dokploy/issues/1727));
