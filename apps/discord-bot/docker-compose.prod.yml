@@ -1,4 +1,5 @@
-# Standalone production stack: the bot plus its own Postgres.
+# Production stack: the bot. Its Postgres is its own database on MAC's managed
+# server, named by DATABASE_URL.
 #
 # Deliberately not an overlay on docker-compose.yml. Dokploy accepts exactly one
 # compose file per service (Dokploy/dokploy#1727), so a production arrangement
@@ -8,46 +9,18 @@
 #   docker compose -f docker-compose.prod.yml up -d
 #
 # docker-compose.yml stays the development file, where `db` sits behind the
-# local-db profile so an external DATABASE_URL can be used instead.
+# local-db profile.
 services:
   bot:
     build: .
     restart: always
     # Dokploy writes the Environment tab to a .env beside this file but does not
-    # inject it into containers, so DISCORD_TOKEN and MONGODB_URI are read from
-    # there. POSTGRES_PASSWORD is interpolated below from the same file.
+    # inject it into containers, so DISCORD_TOKEN, MONGODB_URI and DATABASE_URL
+    # are read from there.
     env_file:
       - .env
-    environment:
-      - DATABASE_URL=postgresql://bot:${POSTGRES_PASSWORD}@postgres:5432/bot_db
-    depends_on:
-      postgres:
-        condition: service_healthy
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-
-  postgres:
-    image: postgres:16-alpine
-    restart: always
-    environment:
-      POSTGRES_USER: bot
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: bot_db
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bot -d bot_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-volumes:
-  pgdata:

@@ -27,9 +27,9 @@ or delete a post, so deadline closing and every reconciliation command fail.
 
 ## 1. Create the service
 
-The bot needs Postgres alongside it, and `docker-compose.prod.yml` describes
-exactly that pairing -- the bot, a managed `postgres:16-alpine` with a
-persistent volume, `restart: always` and log rotation.
+`docker-compose.prod.yml` runs the bot with `restart: always` and log rotation.
+Its Postgres is its own database on MAC's managed server, named by
+`DATABASE_URL`.
 
 In Dokploy: **Project → Create Service → Compose**.
 
@@ -55,9 +55,8 @@ external database instead, and a profiled service does not start. Deploying it
 would run the bot with no database, and `depends_on: required: false` means it
 starts anyway and fails to connect rather than refusing.
 
-The Application service type with **Build type: Dockerfile** also works if you
-would rather manage Postgres separately: add a Dokploy PostgreSQL database and
-point `DATABASE_URL` at its internal connection string.
+The Application service type with **Build type: Dockerfile** also works, with
+the same environment variables.
 
 No domain and no port either way: the bot exposes no HTTP server, so leave the
 Domains tab empty.
@@ -69,19 +68,18 @@ Domains tab empty.
 ```
 DISCORD_TOKEN=
 MONGODB_URI=
-POSTGRES_PASSWORD=
+DATABASE_URL=
 DISCORD_GUILD_ID=      # optional, see below
 ```
 
-`docker-compose.prod.yml` builds `DATABASE_URL` from `POSTGRES_PASSWORD` and
-points it at the bundled `postgres` service, so set the password rather than the
-URL. Set `DATABASE_URL` yourself only if you took the Application route above
-and provisioned Postgres separately.
+`DATABASE_URL` is the bot's connection string on the managed Postgres, as
+printed by `mac-db provision`. The bot verifies the server's certificate for
+any host that is not on this machine or this Docker network.
 
 Dokploy writes the Environment tab to a `.env` beside the compose file but does
 not inject it into containers, so the compose file reads it back: `env_file`
-picks up `DISCORD_TOKEN` and `MONGODB_URI`, and `${POSTGRES_PASSWORD}` is
-interpolated from the same file. Nothing further is needed.
+picks up `DISCORD_TOKEN`, `MONGODB_URI` and `DATABASE_URL`. Nothing further is
+needed.
 
 ### DISCORD_GUILD_ID makes command changes appear immediately
 
