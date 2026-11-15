@@ -10,7 +10,7 @@ import { GoogleAnalytics } from "@next/third-parties/google";
 import Link from "next/link";
 
 import NavBar from "@/components/layout/nav-bar";
-import { MantineProvider } from "@mantine/core";
+import { MantineProvider, v8CssVariablesResolver } from "@mantine/core";
 import { ColorSchemeScript } from "@mantine/core";
 import { PropsWithChildren, Suspense } from "react";
 import Head from "next/head";
@@ -60,10 +60,17 @@ export default function RootLayout({ children }: PropsWithChildren) {
           <Suspense>
             <PostHogPageView />
             <AuthSessionProvider>
-              <MantineProvider theme={theme} defaultColorScheme="dark">
+              <MantineProvider
+                theme={theme}
+                defaultColorScheme="dark"
+                cssVariablesResolver={v8CssVariablesResolver}
+              >
                 <FilterProvider>
                   <div className="min-h-screen flex flex-col px-6">
-                    <Notifications className="mploy-notifications" />
+                    <Notifications
+                      className="mploy-notifications"
+                      pauseResetOnHover="notification"
+                    />
                     <NavBar />
                     <main className="">
                       {children}

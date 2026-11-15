@@ -1,7 +1,7 @@
 // frontend/src/components/jobs/details/sections/job-description.tsx
 "use client";
 import SectionHeading from "@/components/ui/section-heading";
-import { TypographyStylesProvider } from "@mantine/core";
+import { Typography } from "@mantine/core";
 import DOMPurify from "dompurify";
 import { IconBook } from "@tabler/icons-react";
 
@@ -16,14 +16,14 @@ export default function JobDescription({ description }: JobDescriptionProps) {
         title="Job Description"
         icon={<IconBook size={16} stroke={1.5} />}
       />
-      <TypographyStylesProvider>
+      <Typography>
         <div
           dangerouslySetInnerHTML={{
             __html: DOMPurify.sanitize(description || ""),
           }}
           className="prose prose-invert lg:ml-6 leading-relaxed text-xs [&_h1]:mb-1 [&_h2]:mb-1 [&_h3]:mb-1"
         />
-      </TypographyStylesProvider>
+      </Typography>
     </div>
   );
 }
