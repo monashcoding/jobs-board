@@ -35,6 +35,7 @@ export default function FeedbackButton() {
         color: "red",
         message: "Feedback must be between 3 and 1k characters!",
       });
+
       return;
     }
 
@@ -45,15 +46,17 @@ export default function FeedbackButton() {
         color: "red",
         message: "Please enter a valid email address!",
       });
+
       return;
     }
+
     setIsSubmitting(true);
 
     try {
       // Call our server action with the form data
       const result = await submitFeedback({ email, message });
 
-      if (result.success) {
+      if (result.ok) {
         // Clear form and close modal
         setEmail("");
         setMessage("");
