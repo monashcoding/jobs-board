@@ -1,6 +1,6 @@
-import { FilterState } from "@/types/filters";
-import { Job, WORKING_RIGHTS, WorkingRight } from "@/types/job";
-import { MongoJob } from "@/actions/jobs.fetch";
+import type { FilterState } from "@/types/filters";
+import { type Job, WORKING_RIGHTS, type WorkingRight } from "@/types/job";
+import type { MongoJob } from "@/actions/jobs.fetch";
 
 /**
  * Creates a URL query string from a partial FilterState object.
@@ -48,7 +48,9 @@ type MongoDate = Date | string | null | undefined;
  */
 function serializeDate(date: MongoDate): string {
   if (!date) return "";
+
   if (typeof date === "string") return date;
+
   return new Date(date).toISOString();
 }
 
@@ -107,6 +109,7 @@ export function formatCapString(str: string | undefined): string {
   if (!str) {
     return "";
   }
+
   return str
     .split("_")
     .map((word) => {
@@ -114,6 +117,7 @@ export function formatCapString(str: string | undefined): string {
       if (UPPERCASE_WORDS.has(word)) {
         return word;
       }
+
       // Convert other words to title case
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
@@ -125,6 +129,7 @@ export function getTimeAgo(dateString: string) {
   const now = new Date();
   const diffTime = Math.abs(now.getTime() - date.getTime());
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
   return `${diffDays}d ago`;
 }
 
@@ -133,25 +138,34 @@ export function getPluralLabel(label: string) {
     Industry: "Industries",
     // Add more irregular plurals here if needed
   };
+
   return irregularPlurals[label] || `${label}s`;
 }
 
 export function relativeDate(isoDate: string): string {
   const then = new Date(isoDate);
   const now = new Date();
+
   const days = Math.floor(
     (now.getTime() - then.getTime()) / (1000 * 60 * 60 * 24),
   );
+
   if (days < 1) return "today";
+
   if (days < 7) return days === 1 ? "1 day ago" : `${days} days ago`;
+
   if (days < 30) {
     const w = Math.floor(days / 7);
+
     return w === 1 ? "1 week ago" : `${w} weeks ago`;
   }
+
   if (days < 365) {
     const m = Math.floor(days / 30);
+
     return m === 1 ? "1 month ago" : `${m} months ago`;
   }
+
   return "1+ year ago";
 }
 
@@ -160,6 +174,7 @@ export function formatISODate(isoDate: string): string {
   const day = String(date.getUTCDate()).padStart(2, "0");
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const year = date.getUTCFullYear();
+
   return `${day}/${month}/${year}`;
 }
 
@@ -168,6 +183,7 @@ export const formatWorkingRights = (rights: WorkingRight[]): string => {
   const essentialRights = WORKING_RIGHTS.filter(
     (right) => right !== "OTHER_RIGHTS",
   );
+
   const hasAllEssentialRights = essentialRights.every((right) =>
     rights.includes(right),
   );
@@ -186,6 +202,7 @@ export const formatWorkingRights = (rights: WorkingRight[]): string => {
     formattedRights.push("AUS & NZ Citizen/PR");
   } else {
     if (hasAus) formattedRights.push("AUS Citizen/PR");
+
     if (hasNz) formattedRights.push("NZ Citizen/PR");
   }
 

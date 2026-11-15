@@ -56,4 +56,5 @@ const theme = createTheme({
   primaryColor: "dark",
   defaultRadius: "sm",
 });
+
 export { theme };

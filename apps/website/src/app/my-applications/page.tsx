@@ -3,7 +3,7 @@ import { listApplications, listRecruitmentCycles } from "./actions";
 import { STAGES } from "@/lib/stages";
 import {
   DEFAULT_RECRUITMENT_CYCLE_ID,
-  RecruitmentCycle,
+  type RecruitmentCycle,
 } from "@/types/application";
 
 export const dynamic = "force-dynamic";

@@ -1,6 +1,6 @@
 "use server";
 
-import { JobFilters, CompanyFacet } from "@/types/filters";
+import type { JobFilters, CompanyFacet } from "@/types/filters";
 import { getCompanyFacets as fetchCompanyFacets } from "./jobs.fetch";
 
 /**

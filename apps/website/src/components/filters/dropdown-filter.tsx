@@ -9,7 +9,7 @@ import {
 } from "@mantine/core";
 import { IconChevronDown } from "@tabler/icons-react";
 import { useFilterContext } from "@/context/filter/filter-context";
-import { JobFilters } from "@/types/filters";
+import type { JobFilters } from "@/types/filters";
 import { formatCapString, getPluralLabel } from "@/lib/utils";
 
 interface DropdownFilterProps {
@@ -47,7 +47,9 @@ export default function DropdownFilter({
 
   const getDisplayText = () => {
     if (selected.length === 0) return label;
+
     if (selected.length === 1) return formatCapString(selected[0]);
+
     return `${selected.length} ${getPluralLabel(label)}`;
   };
 

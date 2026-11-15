@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 import { useFilterContext } from "@/context/filter/filter-context";
 import JobDetails from "@/components/jobs/job-details";
-import { Job } from "@/types/job";
+import type { Job } from "@/types/job";
 import { useSearchParams } from "next/navigation";
 import { trackJobView } from "@/actions/analytics";
 

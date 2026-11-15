@@ -1,5 +1,6 @@
 // frontend/src/components/jobs/details/sections/job-description.tsx
 "use client";
+
 import SectionHeading from "@/components/ui/section-heading";
 import { Typography } from "@mantine/core";
 import DOMPurify from "dompurify";

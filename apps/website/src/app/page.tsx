@@ -6,6 +6,7 @@ import Link from "next/link";
 import { IconArrowRight } from "@tabler/icons-react";
 import DotBackground from "@/components/ui/dot-background";
 import { useFilterContext } from "@/context/filter/filter-context";
+
 export default function Page() {
   const { filters, updateFilters } = useFilterContext();
 

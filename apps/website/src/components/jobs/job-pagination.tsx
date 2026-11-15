@@ -16,6 +16,7 @@ export default function JobPagination({ pageSize = 20 }: JobPaginationProps) {
 
   const handlePageChange = (page: number) => {
     const scrollContainer = document.querySelector("#job-list-container");
+
     if (scrollContainer) {
       scrollContainer.scrollTop = 0;
     }

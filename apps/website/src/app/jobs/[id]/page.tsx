@@ -2,9 +2,9 @@
 
 import { getJobById } from "@/actions/jobs.fetch";
 import { notFound } from "next/navigation";
-import { Job } from "@/types/job";
+import type { Job } from "@/types/job";
 import JobDetailsWrapper from "@/components/jobs/job-details-wrapper";
-import { Metadata } from "next";
+import type { Metadata } from "next";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -26,6 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   // Create dynamic title and description
   const title = `${job.title} at ${job.company.name}`;
+
   const description =
     job.one_liner || `${job.title} position at ${job.company.name}`;
 

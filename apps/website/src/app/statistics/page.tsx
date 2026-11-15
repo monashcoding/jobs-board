@@ -6,7 +6,7 @@ import {
 } from "@/app/my-applications/actions";
 import {
   DEFAULT_RECRUITMENT_CYCLE_ID,
-  RecruitmentCycle,
+  type RecruitmentCycle,
 } from "@/types/application";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,7 @@ export default async function StatisticsPage() {
         ] satisfies RecruitmentCycle[],
     ),
   ]);
+
   const events = await listApplicationStatusEvents(
     apps.map((app) => app.jobId),
   ).catch(() => []);

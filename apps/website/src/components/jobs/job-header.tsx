@@ -6,7 +6,7 @@ import {
   IconId,
   IconMapPin,
 } from "@tabler/icons-react";
-import { Job } from "@/types/job";
+import type { Job } from "@/types/job";
 import { formatCapString, formatWorkingRights, getTimeAgo } from "@/lib/utils";
 import Link from "next/link";
 import CompanyLogo from "@/components/jobs/company-logo";

@@ -31,7 +31,9 @@ export function formatApplicationDateValue(date = new Date()) {
 
 function parseInputDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
+
   if (!year || !month || !day) return new Date();
+
   return new Date(year, month - 1, day);
 }
 
@@ -46,6 +48,7 @@ function isSameDate(a: Date, b: Date) {
 function buildMonthDays(viewDate: Date) {
   const firstOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
   const mondayOffset = (firstOfMonth.getDay() + 6) % 7;
+
   const start = new Date(
     viewDate.getFullYear(),
     viewDate.getMonth(),
