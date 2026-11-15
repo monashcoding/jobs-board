@@ -239,6 +239,13 @@ class DeadlineWatcher(commands.Cog):
             # be mistaken for activity even if the author filter ever changes.
             has_activity = await self._has_recent_user_activity(thread)
 
+            # Discord archives a quiet thread by itself, and refuses every edit
+            # to an archived thread except the one that reopens it (error
+            # 50083). Without this the closure fails and is retried on every
+            # pass, forever.
+            if thread.archived:
+                await thread.edit(archived=False)
+
             await thread.edit(
                 name=closed_name[:MAX_THREAD_NAME], applied_tags=updated_tags
             )
