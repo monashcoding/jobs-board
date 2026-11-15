@@ -1,4 +1,5 @@
 "use client";
+
 import Link from "next/link";
 import { Button, Menu } from "@mantine/core";
 import { IconMenu2, IconSearch, IconLogout } from "@tabler/icons-react";
@@ -6,19 +7,20 @@ import Logo from "@/components/layout/logo";
 import SearchBar from "@/components/search/search-bar";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { useMacSession, signOutCentral } from "@/lib/mac-session";
+import { useMacSession } from "@monashcoding/auth/react";
+import { signOutCentral } from "@/lib/session";
 
 export const NavBarMobile = () => {
   const [showSearch, setShowSearch] = useState(false);
   const pathname = usePathname();
-  const { data: session, status } = useMacSession();
+  const session = useMacSession();
 
   const menuItems = [
     { href: "/", label: "Home" },
     { href: "/jobs", label: "Jobs" },
     { href: "/my-applications", label: "Applications" },
     { href: "/statistics", label: "Statistics" },
-    ...(status === "authenticated"
+    ...(session.status === "signed-in"
       ? []
       : [{ href: "/sign-in", label: "Sign in" }]),
   ];
@@ -56,7 +58,7 @@ export const NavBarMobile = () => {
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
-                {session?.user?.email && (
+                {session.user?.email && (
                   <Menu.Label>{session.user.email}</Menu.Label>
                 )}
                 {menuItems.map((item) => (
@@ -69,7 +71,7 @@ export const NavBarMobile = () => {
                     {item.label}
                   </Menu.Item>
                 ))}
-                {status === "authenticated" && (
+                {session.status === "signed-in" && (
                   <>
                     <Menu.Divider />
                     <Menu.Item

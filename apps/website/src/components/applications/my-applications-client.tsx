@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useMacSession } from "@/lib/mac-session";
+import { useMacSession } from "@monashcoding/auth/react";
 import {
   Box,
   Button,
@@ -30,12 +30,12 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import {
-  ApplicationStatus,
-  DbApplication,
+  type ApplicationStatus,
+  type DbApplication,
   DEFAULT_RECRUITMENT_CYCLE_ID,
-  RecruitmentCycle,
-  StageColorRole,
-  UserStage,
+  type RecruitmentCycle,
+  type StageColorRole,
+  type UserStage,
 } from "@/types/application";
 import {
   clearLocalApplications,
@@ -55,8 +55,8 @@ import {
 } from "@/app/my-applications/actions";
 import ApplicationsKanban, {
   ApplicationsStatStrip,
-  KanbanDensity,
-  KanbanSort,
+  type KanbanDensity,
+  type KanbanSort,
 } from "@/components/applications/applications-kanban";
 import ApplicationDatePicker, {
   formatApplicationDateValue,
@@ -78,31 +78,39 @@ type AcceptedCelebration = {
 
 function readSort(): KanbanSort {
   if (typeof window === "undefined") return "newest";
+
   try {
     const raw = window.localStorage.getItem(SORT_STORAGE_KEY);
+
     if (raw === "newest" || raw === "oldest") return raw;
   } catch {
     // ignore
   }
+
   return "newest";
 }
 
 function readDensity(): KanbanDensity {
   if (typeof window === "undefined") return "detailed";
+
   try {
     const raw = window.localStorage.getItem(DENSITY_STORAGE_KEY);
+
     if (raw === "compact" || raw === "detailed") return raw;
   } catch {
     // ignore
   }
+
   return "detailed";
 }
 
 function orderStages(stages: UserStage[], orderedNames: string[]) {
   const byName = new Map(stages.map((stage) => [stage.name, stage]));
+
   const ordered = orderedNames
     .map((name) => byName.get(name))
     .filter((stage): stage is UserStage => Boolean(stage));
+
   const missing = stages.filter((stage) => !orderedNames.includes(stage.name));
 
   return [...ordered, ...missing].map((stage, order) => ({
@@ -113,9 +121,11 @@ function orderStages(stages: UserStage[], orderedNames: string[]) {
 
 function readStageOrder(stages: UserStage[]) {
   if (typeof window === "undefined") return stages;
+
   try {
     const raw = window.localStorage.getItem(STAGE_ORDER_STORAGE_KEY);
     const order = raw ? JSON.parse(raw) : null;
+
     if (
       Array.isArray(order) &&
       order.every((name) => typeof name === "string")
@@ -125,6 +135,7 @@ function readStageOrder(stages: UserStage[]) {
   } catch {
     // ignore
   }
+
   return stages;
 }
 
@@ -135,16 +146,22 @@ function moveStage(
 ) {
   const from = stages.findIndex((stage) => stage.name === activeName);
   const to = stages.findIndex((stage) => stage.name === targetName);
+
   if (from < 0 || to < 0 || from === to) return stages;
 
   const next = [...stages];
   const [moved] = next.splice(from, 1);
+
+  if (!moved) return stages;
+
   next.splice(to, 0, moved);
+
   return next.map((stage, order) => ({ ...stage, order }));
 }
 
 function StatusDot({ role }: { role: StageColorRole }) {
   const { dot } = rolePalette(role);
+
   return (
     <div
       style={{
@@ -169,20 +186,26 @@ export default function MyApplicationsClient({
 }) {
   const { status: sessionStatus } = useMacSession();
   const [apps, setApps] = useState<DbApplication[]>(initial);
+
   const [stages, setStages] = useState<UserStage[]>(() =>
     readStageOrder(initialStages),
   );
+
   const [cycles, setCycles] = useState<RecruitmentCycle[]>(initialCycles);
+
   const [selectedCycleId, setSelectedCycleId] = useState(
     initialCycles[0]?.id ?? DEFAULT_RECRUITMENT_CYCLE_ID,
   );
+
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [sort, setSort] = useState<KanbanSort>(readSort);
   const [density, setDensity] = useState<KanbanDensity>(readDensity);
   const [searchQuery, setSearchQuery] = useState("");
+
   const [visibleStages, setVisibleStages] = useState<string[]>(() =>
     stages.map((s) => s.name),
   );
+
   const [mobileStageName, setMobileStageName] = useState(stages[0]?.name ?? "");
   const [customAddOpen, setCustomAddOpen] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
@@ -195,12 +218,17 @@ export default function MyApplicationsClient({
   const [creatingCycle, setCreatingCycle] = useState(false);
   const [renamingCycleId, setRenamingCycleId] = useState<string | null>(null);
   const [renameCycleName, setRenameCycleName] = useState("");
+
   const [cycleDeleteTarget, setCycleDeleteTarget] =
     useState<RecruitmentCycle | null>(null);
+
   const [deletingCycle, setDeletingCycle] = useState(false);
+
   const [acceptedCelebration, setAcceptedCelebration] =
     useState<AcceptedCelebration | null>(null);
+
   const acceptedCelebrationIdRef = useRef(0);
+
   const acceptedCelebrationTimerRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
@@ -233,8 +261,9 @@ export default function MyApplicationsClient({
   }, [stages]);
 
   useEffect(() => {
-    if (sessionStatus !== "authenticated") return;
+    if (sessionStatus !== "signed-in") return;
     const local = getLocalApplications();
+
     if (!local.length) return;
 
     (async () => {
@@ -274,12 +303,15 @@ export default function MyApplicationsClient({
   useEffect(() => {
     if (stages.length === 0) {
       setMobileStageName("");
+
       return;
     }
+
     if (stages.some((stage) => stage.name === mobileStageName)) {
       return;
     }
-    setMobileStageName(stages[0].name);
+
+    setMobileStageName(stages[0]?.name ?? "");
   }, [mobileStageName, stages]);
 
   const selectedCycle = useMemo(
@@ -310,7 +342,9 @@ export default function MyApplicationsClient({
 
   const filteredApps = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+
     if (!q) return cycleApps;
+
     return cycleApps.filter(
       (a) =>
         a.jobSnapshot.companyName.toLowerCase().includes(q) ||
@@ -342,6 +376,7 @@ export default function MyApplicationsClient({
     if (acceptedCelebrationTimerRef.current) {
       clearTimeout(acceptedCelebrationTimerRef.current);
     }
+
     acceptedCelebrationTimerRef.current = setTimeout(() => {
       setAcceptedCelebration(null);
       acceptedCelebrationTimerRef.current = null;
@@ -358,8 +393,10 @@ export default function MyApplicationsClient({
     setApps((prev) =>
       prev.map((p) => (p._id === appId ? { ...p, status: next } : p)),
     );
+
     try {
       await updateApplicationStatus(jobId, next);
+
       if (!isWinStatus(oldStatus) && isWinStatus(next)) {
         showAcceptedCelebration(next);
       }
@@ -373,11 +410,13 @@ export default function MyApplicationsClient({
 
   async function handleDelete(appId: string, jobId: string) {
     const removed = apps.find((a) => a._id === appId);
+
     if (!removed) throw new Error("Application not found");
 
     const fadePromise = new Promise<"fade">((resolve) => {
       window.setTimeout(() => resolve("fade"), DELETE_CARD_FADE_MS);
     });
+
     const deleteResultPromise = deleteApplication(jobId).then(
       () => ({ status: "deleted" as const }),
       (error) => ({ status: "failed" as const, error }),
@@ -439,14 +478,19 @@ export default function MyApplicationsClient({
                     : [removed, ...prev],
                 );
 
-                try {
-                  const restored = await restoreDeletedApplication(removed);
+                const result = await restoreDeletedApplication(removed).catch(
+                  () => null,
+                );
+
+                if (result?.ok) {
+                  const restored = result.value;
+
                   setApps((prev) =>
                     prev.map((app) =>
                       app.jobId === restored.jobId ? restored : app,
                     ),
                   );
-                } catch {
+                } else {
                   setApps((prev) =>
                     prev.filter((app) => app.jobId !== removed.jobId),
                   );
@@ -477,15 +521,19 @@ export default function MyApplicationsClient({
 
   async function handleClearStage(stageName: string) {
     const toRemove = apps.filter((a) => a.status === stageName);
+
     if (toRemove.length === 0) return;
     const removedIds = new Set(toRemove.map((a) => a._id));
     setApps((prev) => prev.filter((a) => !removedIds.has(a._id)));
+
     const results = await Promise.allSettled(
       toRemove.map((a) => deleteApplication(a.jobId)),
     );
+
     const restored = toRemove.filter(
-      (_, i) => results[i].status === "rejected",
+      (_, i) => results[i]?.status === "rejected",
     );
+
     if (restored.length > 0) {
       setApps((prev) => [...restored, ...prev]);
     }
@@ -496,6 +544,7 @@ export default function MyApplicationsClient({
     setApps((prev) =>
       prev.map((p) => (p._id === appId ? { ...p, starred: next } : p)),
     );
+
     try {
       await toggleApplicationStar(jobId, next);
     } catch {
@@ -518,6 +567,7 @@ export default function MyApplicationsClient({
       date,
       selectedCycle.id,
     );
+
     setApps((prev) => [newApp, ...prev]);
   }
 
@@ -531,6 +581,7 @@ export default function MyApplicationsClient({
   async function submitCustomAdd() {
     if (!customTitle.trim() || !customCompany.trim() || !customStage) return;
     setCustomCreating(true);
+
     try {
       await handleCreateInStage(
         customTitle.trim(),
@@ -553,6 +604,7 @@ export default function MyApplicationsClient({
         p.jobId === jobId ? { ...p, notes: nextNotes || undefined } : p,
       ),
     );
+
     try {
       await updateApplicationNotes(jobId, nextNotes);
     } catch {
@@ -574,11 +626,16 @@ export default function MyApplicationsClient({
 
   async function submitNewCycle() {
     const trimmed = newCycleName.trim();
+
     if (!trimmed) return;
 
     setCreatingCycle(true);
+
     try {
-      const cycle = await createRecruitmentCycle(trimmed);
+      const result = await createRecruitmentCycle(trimmed);
+
+      if (!result.ok) return;
+      const cycle = result.value;
       setCycles((prev) => [...prev, cycle]);
       setSelectedCycleId(cycle.id);
       setNewCycleName("");
@@ -594,6 +651,7 @@ export default function MyApplicationsClient({
 
   async function submitRenameCycle(cycleId: string) {
     const trimmed = renameCycleName.trim();
+
     if (!trimmed) return;
 
     const previous = cycles;
@@ -603,12 +661,18 @@ export default function MyApplicationsClient({
       ),
     );
     setRenamingCycleId(null);
-    try {
-      const renamed = await renameRecruitmentCycle(cycleId, trimmed);
+
+    const result = await renameRecruitmentCycle(cycleId, trimmed).catch(
+      () => null,
+    );
+
+    if (result?.ok) {
+      const renamed = result.value;
+
       setCycles((prev) =>
         prev.map((cycle) => (cycle.id === cycleId ? renamed : cycle)),
       );
-    } catch {
+    } else {
       setCycles(previous);
     }
   }
@@ -632,18 +696,18 @@ export default function MyApplicationsClient({
       ),
     );
 
-    try {
-      await deleteRecruitmentCycle(target.id);
-    } catch {
+    const result = await deleteRecruitmentCycle(target.id).catch(() => null);
+
+    if (!result?.ok) {
       setCycles(previousCycles);
       setApps(previousApps);
       setSelectedCycleId(target.id);
-    } finally {
-      setDeletingCycle(false);
     }
+
+    setDeletingCycle(false);
   }
 
-  if (sessionStatus === "unauthenticated") {
+  if (sessionStatus === "signed-out") {
     return <AuthRequiredPanel screen="applications" />;
   }
 
@@ -692,6 +756,7 @@ export default function MyApplicationsClient({
 
   const compactBtn =
     "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[0.65rem] text-xs font-medium cursor-pointer";
+
   const compactBtnStyle: React.CSSProperties = {
     background: "transparent",
     border: "2px solid #3a3a3a",
@@ -848,6 +913,7 @@ export default function MyApplicationsClient({
                           if (e.key === "Enter") {
                             void submitRenameCycle(cycle.id);
                           }
+
                           if (e.key === "Escape") {
                             setRenamingCycleId(null);
                           }

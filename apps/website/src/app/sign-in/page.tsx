@@ -4,7 +4,7 @@ import { Alert, Button, Card } from "@mantine/core";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { startSocialSignIn } from "@/lib/mac-session";
+import { getMacAuthClient } from "@monashcoding/auth/client";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -16,13 +16,15 @@ export default function SignInPage() {
   const signIn = async (provider: "google" | "microsoft") => {
     setError(null);
     setLoading(provider);
+
     try {
       // Absolute URL back to mploy so central can redirect here after auth.
       const callbackURL = new URL(
         callbackPath,
         window.location.origin,
       ).toString();
-      await startSocialSignIn(provider, callbackURL);
+
+      await getMacAuthClient().signIn(provider, callbackURL);
     } catch {
       setError("Could not start sign-in. Please try again.");
       setLoading(null);
