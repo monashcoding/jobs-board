@@ -56,9 +56,7 @@ export type DbApplication = LocalApplication & {
 };
 
 export type ApplicationStatusEventSource =
-  | "application_created"
-  | "local_sync"
-  | "status_change";
+  "application_created" | "local_sync" | "status_change";
 
 export type ApplicationStatusEvent = {
   _id: string;

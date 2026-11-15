@@ -21,11 +21,7 @@ import { rolePalette } from "@/lib/role-palette";
 import { relativeDate } from "@/lib/utils";
 
 type PipelineStageName =
-  | "STARTED"
-  | "APPLIED"
-  | "INTERVIEW"
-  | "ACCEPTED"
-  | "REJECTED";
+  "STARTED" | "APPLIED" | "INTERVIEW" | "ACCEPTED" | "REJECTED";
 
 type PipelineStats = {
   total: number;
