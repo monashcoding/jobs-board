@@ -16,7 +16,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@mantine/core": "^9.8.0",
-    "@mantine/hooks": "^9.8.0",
+    "@mantine/hooks": "^9.8.1",
     "@mantine/notifications": "^9.8.0",
     "@monashcoding/analytics": "^0.2.0",
     "@monashcoding/auth": "^0.2.0",
